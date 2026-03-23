@@ -44,6 +44,9 @@ public class Tenant
     [MaxLength(500)]
     public string? GoogleMapsUrl { get; set; }
 
+    [MaxLength(100)]
+    public string? Subdomain { get; set; }
+
     [MaxLength(50)]
     public string? CurrencyCode { get; set; } = "INR";
 

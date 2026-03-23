@@ -349,4 +349,42 @@ public class OrderService : IOrderService
 
         return orders.Select(o => MapOrder(o, o.Table?.TableNumber ?? "")).ToList();
     }
+
+    public async Task<OrderResponse> CancelOrderItemAsync(Guid orderId, Guid itemId)
+    {
+        var order = await GetFullOrderQuery().FirstOrDefaultAsync(o => o.Id == orderId)
+            ?? throw new KeyNotFoundException("Order not found.");
+
+        if (order.Status == OrderStatus.Completed || order.Status == OrderStatus.Served)
+            throw new InvalidOperationException("Cannot cancel items on a completed or served order.");
+
+        var item = order.Items.FirstOrDefault(i => i.Id == itemId)
+            ?? throw new KeyNotFoundException("Order item not found.");
+
+        // Remove the item
+        _db.Set<OrderItem>().Remove(item);
+        order.Items.Remove(item);
+
+        // Recalculate totals
+        order.SubTotal = order.Items.Sum(i => i.TotalPrice);
+        order.Tax = Math.Round(order.SubTotal * 0.05m, 2);
+        order.TotalAmount = order.SubTotal + order.Tax;
+
+        // If no items left, cancel the entire order
+        if (!order.Items.Any())
+        {
+            order.Status = OrderStatus.Cancelled;
+            order.CompletedAt = DateTime.UtcNow;
+        }
+
+        order.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var response = MapOrder(order, order.Table?.TableNumber ?? "");
+
+        // Notify via SignalR
+        await _hub.Clients.Group(order.TenantId).SendAsync("OrderStatusUpdated", response);
+
+        return response;
+    }
 }

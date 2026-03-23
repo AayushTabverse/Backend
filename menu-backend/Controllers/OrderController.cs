@@ -167,6 +167,29 @@ public class OrderController : ControllerBase
     }
 
     /// <summary>
+    /// Cancel a specific item from an order. Accessible by admin/waiter or the customer.
+    /// Only allows cancellation if the order is not yet Served/Completed.
+    /// </summary>
+    [HttpDelete("{orderId}/items/{itemId}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CancelOrderItem(Guid orderId, Guid itemId)
+    {
+        try
+        {
+            var result = await _orderService.CancelOrderItemAsync(orderId, itemId);
+            return Ok(ApiResponse<OrderResponse>.Ok(result, "Item cancelled successfully."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>
     /// Download order history as CSV. Admin only.
     /// </summary>
     [HttpGet("history/download")]

@@ -12,11 +12,16 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
 
-// ── Database ──
-// Using InMemory database for development/demo (no SQL Server required).
-// Switch to UseSqlServer() when a real DB is set up.
+// ── Database (Azure MySQL) ──
+var connectionString = config.GetConnectionString("DefaultConnection")!;
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseInMemoryDatabase("MenuOrderingDB"));
+    options.UseMySQL(connectionString, mysqlOptions =>
+    {
+        mysqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorNumbersToAdd: null);
+    }));
 
 // ── Tenant Provider ──
 builder.Services.AddHttpContextAccessor();
@@ -65,6 +70,9 @@ builder.Services.AddScoped<ITableService, TableService>();
 builder.Services.AddScoped<IPrintService, PrintService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<IWebsiteService, WebsiteService>();
+builder.Services.AddScoped<ISubdomainService, SubdomainService>();
+builder.Services.AddHttpClient();
 
 // ── SignalR ──
 builder.Services.AddSignalR();
@@ -85,6 +93,14 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
                 config["App:FrontendUrl"] ?? "http://localhost:58738"
             )
+            .SetIsOriginAllowed(origin =>
+            {
+                // Allow any *.tabverse.in subdomain
+                var host = new Uri(origin).Host;
+                return host.EndsWith(".tabverse.in", StringComparison.OrdinalIgnoreCase)
+                    || host == "tabverse.in"
+                    || host == "localhost";
+            })
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
@@ -119,12 +135,11 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<OrderHub>("/hubs/orders");
 
-// ── Seed sample data (InMemory DB) ──
+// ── Apply pending migrations on startup ──
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
-    SeedData.Initialize(db);
+    db.Database.Migrate();
 }
 
 app.Run();

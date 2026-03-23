@@ -14,4 +14,5 @@ public interface IOrderService
     Task<TableSessionSummary> GetTableSessionAsync(Guid tableId);
     Task<TableSessionSummary> ClearTableAsync(Guid tableId);
     Task<List<OrderResponse>> GetOrderHistoryAsync(DateTime from, DateTime to);
+    Task<OrderResponse> CancelOrderItemAsync(Guid orderId, Guid itemId);
 }
