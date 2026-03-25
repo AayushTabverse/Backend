@@ -81,7 +81,9 @@ public class OrderService : IOrderService
         }
 
         order.SubTotal = subTotal;
-        order.Tax = Math.Round(subTotal * 0.05m, 2); // 5% GST as default
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.TenantId == tenantId);
+        var taxRate = tenant != null ? (tenant.CgstPercent + tenant.SgstPercent + tenant.ServiceChargePercent) / 100m : 0.05m;
+        order.Tax = Math.Round(subTotal * taxRate, 2);
         order.TotalAmount = order.SubTotal + order.Tax;
         order.EstimatedMinutes = maxPrepTime + 5; // buffer
 
@@ -239,6 +241,7 @@ public class OrderService : IOrderService
         PreparedAt = order.PreparedAt,
         ServedAt = order.ServedAt,
         CompletedAt = order.CompletedAt,
+        BillNumber = order.BillNumber,
         Items = order.Items.Select(i => new OrderItemResponse
         {
             Id = i.Id,
@@ -300,12 +303,23 @@ public class OrderService : IOrderService
             .Where(o => o.TableId == tableId && ActiveStatuses.Contains(o.Status))
             .ToListAsync();
 
+        // Generate bill number: BILL-YYYYMMDD-XXXX
+        var today = DateTime.UtcNow.ToString("yyyyMMdd");
+        var billCount = await _db.Orders
+            .IgnoreQueryFilters()
+            .Where(o => o.TenantId == table.TenantId && o.BillNumber != null)
+            .Select(o => o.BillNumber)
+            .Distinct()
+            .CountAsync();
+        var billNumber = $"BILL-{today}-{(billCount + 1):D4}";
+
         var now = DateTime.UtcNow;
         foreach (var order in activeOrders)
         {
             order.Status = OrderStatus.Completed;
             order.CompletedAt = now;
             order.UpdatedAt = now;
+            order.BillNumber = billNumber;
         }
 
         await _db.SaveChangesAsync();
@@ -367,7 +381,9 @@ public class OrderService : IOrderService
 
         // Recalculate totals
         order.SubTotal = order.Items.Sum(i => i.TotalPrice);
-        order.Tax = Math.Round(order.SubTotal * 0.05m, 2);
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.TenantId == order.TenantId);
+        var taxRate = tenant != null ? (tenant.CgstPercent + tenant.SgstPercent + tenant.ServiceChargePercent) / 100m : 0.05m;
+        order.Tax = Math.Round(order.SubTotal * taxRate, 2);
         order.TotalAmount = order.SubTotal + order.Tax;
 
         // If no items left, cancel the entire order
@@ -386,5 +402,92 @@ public class OrderService : IOrderService
         await _hub.Clients.Group(order.TenantId).SendAsync("OrderStatusUpdated", response);
 
         return response;
+    }
+
+    public async Task<PaginatedBillsResponse> GetBillsAsync(DateTime from, DateTime to, int page, int pageSize)
+    {
+        var toEnd = to.Date.AddDays(1);
+
+        // Get all completed orders with bill numbers in range
+        var billsQuery = _db.Orders
+            .Include(o => o.Items)
+            .Include(o => o.Table)
+            .Where(o => o.Status == OrderStatus.Completed
+                     && o.BillNumber != null
+                     && o.CompletedAt.HasValue
+                     && o.CompletedAt.Value >= from.Date
+                     && o.CompletedAt.Value < toEnd);
+
+        // Group by BillNumber to get distinct bill count
+        var allBillGroups = await billsQuery
+            .GroupBy(o => o.BillNumber)
+            .Select(g => new
+            {
+                BillNumber = g.Key!,
+                CompletedAt = g.Max(o => o.CompletedAt!.Value),
+                SubTotal = g.Sum(o => o.SubTotal),
+                Tax = g.Sum(o => o.Tax),
+                TotalAmount = g.Sum(o => o.TotalAmount),
+                OrderCount = g.Count(),
+                TotalItems = g.Sum(o => o.Items.Count)
+            })
+            .OrderByDescending(g => g.CompletedAt)
+            .ToListAsync();
+
+        var totalCount = allBillGroups.Count;
+        var totalRevenue = allBillGroups.Sum(b => b.TotalAmount);
+        var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+        // Paginate
+        var pagedBills = allBillGroups
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        // Load full orders for paged bills
+        // Note: .Contains() with a local collection is not supported by the MySQL provider,
+        // so we filter by bill numbers in memory after loading the date-scoped results.
+        var billNumberSet = pagedBills.Select(b => b.BillNumber).ToHashSet();
+        var orders = (await _db.Orders
+            .Include(o => o.Items)
+            .Include(o => o.Table)
+            .Where(o => o.Status == OrderStatus.Completed
+                     && o.BillNumber != null
+                     && o.CompletedAt.HasValue
+                     && o.CompletedAt.Value >= from.Date
+                     && o.CompletedAt.Value < toEnd)
+            .OrderBy(o => o.CreatedAt)
+            .ToListAsync())
+            .Where(o => billNumberSet.Contains(o.BillNumber!))
+            .ToList();
+
+        var bills = pagedBills.Select(b =>
+        {
+            var billOrders = orders.Where(o => o.BillNumber == b.BillNumber).ToList();
+            var table = billOrders.FirstOrDefault()?.Table;
+            return new BillResponse
+            {
+                BillNumber = b.BillNumber,
+                TableNumber = table?.TableNumber ?? "",
+                TableLabel = table?.Label,
+                OrderCount = b.OrderCount,
+                TotalItems = billOrders.Sum(o => o.Items.Count),
+                SubTotal = b.SubTotal,
+                Tax = b.Tax,
+                TotalAmount = b.TotalAmount,
+                CompletedAt = b.CompletedAt,
+                Orders = billOrders.Select(o => MapOrder(o, table?.TableNumber ?? "")).ToList()
+            };
+        }).ToList();
+
+        return new PaginatedBillsResponse
+        {
+            Bills = bills,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
+            TotalPages = totalPages,
+            TotalRevenue = totalRevenue
+        };
     }
 }

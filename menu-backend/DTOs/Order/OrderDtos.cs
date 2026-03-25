@@ -53,6 +53,7 @@ public class OrderResponse
     public DateTime? PreparedAt { get; set; }
     public DateTime? ServedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public string? BillNumber { get; set; }
     public List<OrderItemResponse> Items { get; set; } = new();
     public PaymentSummary? Payment { get; set; }
 }
@@ -97,4 +98,31 @@ public class TableSessionSummary
     public decimal GrandTax { get; set; }
     public decimal GrandTotal { get; set; }
     public List<OrderResponse> Orders { get; set; } = new();
+}
+
+/// <summary>
+/// A bill groups all orders from a single table session (created when table is cleared).
+/// </summary>
+public class BillResponse
+{
+    public string BillNumber { get; set; } = string.Empty;
+    public string TableNumber { get; set; } = string.Empty;
+    public string? TableLabel { get; set; }
+    public int OrderCount { get; set; }
+    public int TotalItems { get; set; }
+    public decimal SubTotal { get; set; }
+    public decimal Tax { get; set; }
+    public decimal TotalAmount { get; set; }
+    public DateTime CompletedAt { get; set; }
+    public List<OrderResponse> Orders { get; set; } = new();
+}
+
+public class PaginatedBillsResponse
+{
+    public List<BillResponse> Bills { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages { get; set; }
+    public decimal TotalRevenue { get; set; }
 }

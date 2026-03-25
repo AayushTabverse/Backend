@@ -15,6 +15,12 @@ public class BusinessSettingsResponse
     public string? WebsiteUrl { get; set; }
     public string? GoogleMapsUrl { get; set; }
     public string? CurrencyCode { get; set; }
+    public string? UpiQrCodeUrl { get; set; }
+    public string? PrinterWidth { get; set; }
+    public bool DirectPrint { get; set; }
+    public decimal CgstPercent { get; set; }
+    public decimal SgstPercent { get; set; }
+    public decimal ServiceChargePercent { get; set; }
 }
 
 public class UpdateBusinessSettingsRequest
@@ -48,4 +54,21 @@ public class UpdateBusinessSettingsRequest
 
     [MaxLength(500)]
     public string? GoogleMapsUrl { get; set; }
+
+    [MaxLength(1000)]
+    public string? UpiQrCodeUrl { get; set; }
+
+    [MaxLength(20)]
+    public string? PrinterWidth { get; set; }
+
+    public bool? DirectPrint { get; set; }
+
+    [Range(0, 100)]
+    public decimal? CgstPercent { get; set; }
+
+    [Range(0, 100)]
+    public decimal? SgstPercent { get; set; }
+
+    [Range(0, 100)]
+    public decimal? ServiceChargePercent { get; set; }
 }

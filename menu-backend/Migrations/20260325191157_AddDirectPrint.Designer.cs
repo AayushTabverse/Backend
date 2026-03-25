@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using menu_backend.Data;
 
@@ -10,9 +11,11 @@ using menu_backend.Data;
 namespace menu_backend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260325191157_AddDirectPrint")]
+    partial class AddDirectPrint
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -179,10 +182,6 @@ namespace menu_backend.Migrations
 
                     b.Property<DateTime?>("AcceptedAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<string>("BillNumber")
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
 
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime(6)");
@@ -481,9 +480,6 @@ namespace menu_backend.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
-                    b.Property<decimal>("CgstPercent")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -529,12 +525,6 @@ namespace menu_backend.Migrations
                     b.Property<string>("PrinterWidth")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
-
-                    b.Property<decimal>("ServiceChargePercent")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("SgstPercent")
-                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("Subdomain")
                         .HasMaxLength(100)

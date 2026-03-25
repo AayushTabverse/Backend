@@ -167,6 +167,20 @@ public class OrderController : ControllerBase
     }
 
     /// <summary>
+    /// Get paginated bills (grouped orders from cleared tables) filtered by date range.
+    /// </summary>
+    [HttpGet("bills")]
+    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    public async Task<IActionResult> GetBills([FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 20;
+        if (pageSize > 100) pageSize = 100;
+        var result = await _orderService.GetBillsAsync(from, to, page, pageSize);
+        return Ok(ApiResponse<PaginatedBillsResponse>.Ok(result));
+    }
+
+    /// <summary>
     /// Cancel a specific item from an order. Accessible by admin/waiter or the customer.
     /// Only allows cancellation if the order is not yet Served/Completed.
     /// </summary>

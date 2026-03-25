@@ -44,6 +44,21 @@ public class Tenant
     [MaxLength(500)]
     public string? GoogleMapsUrl { get; set; }
 
+    [MaxLength(1000)]
+    public string? UpiQrCodeUrl { get; set; }
+
+    [MaxLength(20)]
+    public string? PrinterWidth { get; set; } = "standard";
+
+    public bool DirectPrint { get; set; } = false;
+
+    public decimal CgstPercent { get; set; } = 2.5m;
+
+    public decimal SgstPercent { get; set; } = 2.5m;
+
+    public decimal ServiceChargePercent { get; set; } = 0m;
+
+
     [MaxLength(100)]
     public string? Subdomain { get; set; }
 

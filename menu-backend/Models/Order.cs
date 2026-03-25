@@ -48,6 +48,9 @@ public class Order : BaseEntity
 
     public int EstimatedMinutes { get; set; } = 20;
 
+    [MaxLength(20)]
+    public string? BillNumber { get; set; }
+
     // Navigation
     public RestaurantTable? Table { get; set; }
     public ICollection<OrderItem> Items { get; set; } = new List<OrderItem>();
