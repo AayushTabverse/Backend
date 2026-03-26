@@ -36,6 +36,9 @@ public class Order : BaseEntity
 
     public decimal Tax { get; set; }
 
+    /// <summary>Discount amount applied when clearing the table</summary>
+    public decimal DiscountAmount { get; set; }
+
     public decimal TotalAmount { get; set; }
 
     [MaxLength(500)]

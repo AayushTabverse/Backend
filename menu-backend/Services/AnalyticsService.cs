@@ -30,12 +30,26 @@ public class AnalyticsService : IAnalyticsService
 
         var topItems = await GetTopItemsAsync(5, 1);
 
+        // Due/Udhaar analytics
+        var unsettledDues = await _db.CustomerDues
+            .Where(d => !d.IsSettled)
+            .ToListAsync();
+
+        var totalUnsettledDues = unsettledDues.Sum(d => d.DueAmount);
+        var unsettledDueCount = unsettledDues.Count;
+
+        // Today's discount
+        var todayDiscount = todayOrders.Sum(o => o.DiscountAmount);
+
         return new DashboardSummaryResponse
         {
             TodaySales = todayOrders.Sum(o => o.TotalAmount),
             TodayOrderCount = todayOrders.Count,
             LiveOrderCount = liveCount,
             AvgOrderValue = todayOrders.Count > 0 ? todayOrders.Average(o => o.TotalAmount) : 0,
+            TotalUnsettledDues = totalUnsettledDues,
+            UnsettledDueCount = unsettledDueCount,
+            TodayDiscountGiven = todayDiscount,
             TopItems = topItems
         };
     }

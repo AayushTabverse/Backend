@@ -28,5 +28,8 @@ public class DashboardSummaryResponse
     public int TodayOrderCount { get; set; }
     public int LiveOrderCount { get; set; }
     public decimal AvgOrderValue { get; set; }
+    public decimal TotalUnsettledDues { get; set; }
+    public int UnsettledDueCount { get; set; }
+    public decimal TodayDiscountGiven { get; set; }
     public List<TopItemResponse> TopItems { get; set; } = new();
 }

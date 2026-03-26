@@ -233,6 +233,7 @@ public class OrderService : IOrderService
         Type = order.Type.ToString(),
         SubTotal = order.SubTotal,
         Tax = order.Tax,
+        DiscountAmount = order.DiscountAmount,
         TotalAmount = order.TotalAmount,
         SpecialInstructions = order.SpecialInstructions,
         EstimatedMinutes = order.EstimatedMinutes,
@@ -294,7 +295,7 @@ public class OrderService : IOrderService
         };
     }
 
-    public async Task<TableSessionSummary> ClearTableAsync(Guid tableId)
+    public async Task<TableSessionSummary> ClearTableAsync(Guid tableId, ClearTableRequest request)
     {
         var table = await _db.Tables.FindAsync(tableId)
             ?? throw new KeyNotFoundException("Table not found.");
@@ -314,12 +315,67 @@ public class OrderService : IOrderService
         var billNumber = $"BILL-{today}-{(billCount + 1):D4}";
 
         var now = DateTime.UtcNow;
+
+        // Distribute discount proportionally across orders
+        var totalBeforeDiscount = activeOrders.Sum(o => o.TotalAmount);
+        var discount = Math.Max(0, Math.Min(request.DiscountAmount, totalBeforeDiscount));
+
         foreach (var order in activeOrders)
         {
             order.Status = OrderStatus.Completed;
             order.CompletedAt = now;
             order.UpdatedAt = now;
             order.BillNumber = billNumber;
+
+            if (discount > 0 && totalBeforeDiscount > 0)
+            {
+                // Proportional discount per order
+                var proportion = order.TotalAmount / totalBeforeDiscount;
+                order.DiscountAmount = Math.Round(discount * proportion, 2);
+                order.TotalAmount -= order.DiscountAmount;
+            }
+        }
+
+        // Handle partial payment / dues (udhaar)
+        var finalTotal = activeOrders.Sum(o => o.TotalAmount);
+        var paidAmount = request.PaidAmount > 0 ? Math.Min(request.PaidAmount, finalTotal) : finalTotal;
+        var dueAmount = finalTotal - paidAmount;
+
+        if (dueAmount > 0 && !string.IsNullOrWhiteSpace(request.CustomerName))
+        {
+            _db.CustomerDues.Add(new Models.CustomerDue
+            {
+                TenantId = table.TenantId,
+                CustomerName = request.CustomerName.Trim(),
+                CustomerMobile = request.CustomerMobile?.Trim(),
+                BillNumber = billNumber,
+                BillAmount = finalTotal,
+                PaidAmount = paidAmount,
+                DueAmount = dueAmount,
+                Notes = request.Notes
+            });
+        }
+
+        // Save customer record when both name and mobile are provided
+        if (!string.IsNullOrWhiteSpace(request.CustomerName) && !string.IsNullOrWhiteSpace(request.CustomerMobile))
+        {
+            var mobile = request.CustomerMobile.Trim();
+            var existingCustomer = await _db.Customers
+                .FirstOrDefaultAsync(c => c.CustomerMobile == mobile);
+            if (existingCustomer != null)
+            {
+                existingCustomer.CustomerName = request.CustomerName.Trim();
+                existingCustomer.UpdatedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                _db.Customers.Add(new Models.Customer
+                {
+                    TenantId = table.TenantId,
+                    CustomerName = request.CustomerName.Trim(),
+                    CustomerMobile = mobile
+                });
+            }
         }
 
         await _db.SaveChangesAsync();
@@ -344,7 +400,10 @@ public class OrderService : IOrderService
             ActiveOrderCount = 0,
             GrandSubTotal = mapped.Sum(o => o.SubTotal),
             GrandTax = mapped.Sum(o => o.Tax),
+            GrandDiscount = discount,
             GrandTotal = mapped.Sum(o => o.TotalAmount),
+            PaidAmount = paidAmount,
+            DueAmount = dueAmount,
             Orders = mapped
         };
     }
@@ -427,6 +486,7 @@ public class OrderService : IOrderService
                 CompletedAt = g.Max(o => o.CompletedAt!.Value),
                 SubTotal = g.Sum(o => o.SubTotal),
                 Tax = g.Sum(o => o.Tax),
+                DiscountAmount = g.Sum(o => o.DiscountAmount),
                 TotalAmount = g.Sum(o => o.TotalAmount),
                 OrderCount = g.Count(),
                 TotalItems = g.Sum(o => o.Items.Count)
@@ -461,10 +521,19 @@ public class OrderService : IOrderService
             .Where(o => billNumberSet.Contains(o.BillNumber!))
             .ToList();
 
+        // Load customer dues for these bills
+        var duesForBills = (await _db.CustomerDues
+            .Where(d => d.BillNumber != null)
+            .ToListAsync())
+            .Where(d => billNumberSet.Contains(d.BillNumber!))
+            .GroupBy(d => d.BillNumber!)
+            .ToDictionary(g => g.Key, g => g.First());
+
         var bills = pagedBills.Select(b =>
         {
             var billOrders = orders.Where(o => o.BillNumber == b.BillNumber).ToList();
             var table = billOrders.FirstOrDefault()?.Table;
+            duesForBills.TryGetValue(b.BillNumber, out var due);
             return new BillResponse
             {
                 BillNumber = b.BillNumber,
@@ -474,7 +543,12 @@ public class OrderService : IOrderService
                 TotalItems = billOrders.Sum(o => o.Items.Count),
                 SubTotal = b.SubTotal,
                 Tax = b.Tax,
+                DiscountAmount = b.DiscountAmount,
                 TotalAmount = b.TotalAmount,
+                PaidAmount = due?.PaidAmount ?? b.TotalAmount,
+                DueAmount = due?.DueAmount ?? 0,
+                CustomerName = due?.CustomerName,
+                CustomerMobile = due?.CustomerMobile,
                 CompletedAt = b.CompletedAt,
                 Orders = billOrders.Select(o => MapOrder(o, table?.TableNumber ?? "")).ToList()
             };

@@ -26,6 +26,8 @@ public class AppDbContext : DbContext
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<PrintJob> PrintJobs => Set<PrintJob>();
     public DbSet<WebsiteContent> WebsiteContents => Set<WebsiteContent>();
+    public DbSet<CustomerDue> CustomerDues => Set<CustomerDue>();
+    public DbSet<Customer> Customers => Set<Customer>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,6 +44,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Payment>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<PrintJob>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<WebsiteContent>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<CustomerDue>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<Customer>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
 
         // ── Tenant ──
         modelBuilder.Entity<Tenant>(entity =>
@@ -108,6 +112,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.SubTotal).HasColumnType("decimal(10,2)");
             entity.Property(e => e.Tax).HasColumnType("decimal(10,2)");
             entity.Property(e => e.TotalAmount).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.DiscountAmount).HasColumnType("decimal(10,2)");
             entity.HasOne(e => e.Table)
                   .WithMany(t => t.Orders)
                   .HasForeignKey(e => e.TableId)
@@ -147,6 +152,15 @@ public class AppDbContext : DbContext
                   .WithMany(o => o.PrintJobs)
                   .HasForeignKey(e => e.OrderId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── CustomerDue ──
+        modelBuilder.Entity<CustomerDue>(entity =>
+        {
+            entity.Property(e => e.BillAmount).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.PaidAmount).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.DueAmount).HasColumnType("decimal(10,2)");
+            entity.HasIndex(e => new { e.TenantId, e.CustomerMobile });
         });
     }
 

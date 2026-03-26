@@ -142,11 +142,11 @@ public class OrderController : ControllerBase
     /// </summary>
     [HttpPost("clear-table/{tableId}")]
     [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
-    public async Task<IActionResult> ClearTable(Guid tableId)
+    public async Task<IActionResult> ClearTable(Guid tableId, [FromBody] ClearTableRequest request)
     {
         try
         {
-            var result = await _orderService.ClearTableAsync(tableId);
+            var result = await _orderService.ClearTableAsync(tableId, request);
             return Ok(ApiResponse<TableSessionSummary>.Ok(result, "Table cleared. All orders marked completed."));
         }
         catch (KeyNotFoundException ex)

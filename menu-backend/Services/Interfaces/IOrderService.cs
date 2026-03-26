@@ -12,7 +12,7 @@ public interface IOrderService
     Task<List<OrderResponse>> GetOrdersByTableAsync(Guid tableId);
     Task<OrderResponse?> GetOrderByNumberAsync(string orderNumber);
     Task<TableSessionSummary> GetTableSessionAsync(Guid tableId);
-    Task<TableSessionSummary> ClearTableAsync(Guid tableId);
+    Task<TableSessionSummary> ClearTableAsync(Guid tableId, ClearTableRequest request);
     Task<List<OrderResponse>> GetOrderHistoryAsync(DateTime from, DateTime to);
     Task<PaginatedBillsResponse> GetBillsAsync(DateTime from, DateTime to, int page, int pageSize);
     Task<OrderResponse> CancelOrderItemAsync(Guid orderId, Guid itemId);

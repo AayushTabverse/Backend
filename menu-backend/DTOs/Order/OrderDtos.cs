@@ -35,6 +35,15 @@ public class UpdateOrderStatusRequest
     public int? EstimatedMinutes { get; set; }
 }
 
+public class ClearTableRequest
+{
+    public decimal DiscountAmount { get; set; }
+    public decimal PaidAmount { get; set; }
+    public string? CustomerName { get; set; }
+    public string? CustomerMobile { get; set; }
+    public string? Notes { get; set; }
+}
+
 public class OrderResponse
 {
     public Guid Id { get; set; }
@@ -45,6 +54,7 @@ public class OrderResponse
     public string Type { get; set; } = string.Empty;
     public decimal SubTotal { get; set; }
     public decimal Tax { get; set; }
+    public decimal DiscountAmount { get; set; }
     public decimal TotalAmount { get; set; }
     public string? SpecialInstructions { get; set; }
     public int EstimatedMinutes { get; set; }
@@ -96,14 +106,17 @@ public class TableSessionSummary
     public int ActiveOrderCount { get; set; }
     public decimal GrandSubTotal { get; set; }
     public decimal GrandTax { get; set; }
+    public decimal GrandDiscount { get; set; }
     public decimal GrandTotal { get; set; }
+    public decimal PaidAmount { get; set; }
+    public decimal DueAmount { get; set; }
     public List<OrderResponse> Orders { get; set; } = new();
 }
 
 /// <summary>
 /// A bill groups all orders from a single table session (created when table is cleared).
 /// </summary>
-public class BillResponse
+ public class BillResponse
 {
     public string BillNumber { get; set; } = string.Empty;
     public string TableNumber { get; set; } = string.Empty;
@@ -112,7 +125,12 @@ public class BillResponse
     public int TotalItems { get; set; }
     public decimal SubTotal { get; set; }
     public decimal Tax { get; set; }
+    public decimal DiscountAmount { get; set; }
     public decimal TotalAmount { get; set; }
+    public decimal PaidAmount { get; set; }
+    public decimal DueAmount { get; set; }
+    public string? CustomerName { get; set; }
+    public string? CustomerMobile { get; set; }
     public DateTime CompletedAt { get; set; }
     public List<OrderResponse> Orders { get; set; } = new();
 }

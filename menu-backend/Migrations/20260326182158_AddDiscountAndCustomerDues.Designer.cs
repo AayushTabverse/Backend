@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using menu_backend.Data;
 
@@ -10,50 +11,16 @@ using menu_backend.Data;
 namespace menu_backend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260326182158_AddDiscountAndCustomerDues")]
+    partial class AddDiscountAndCustomerDues
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("ProductVersion", "10.0.5")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
-
-            modelBuilder.Entity("menu_backend.Models.Customer", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("CustomerMobile")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<string>("CustomerName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(36)
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Customers");
-                });
 
             modelBuilder.Entity("menu_backend.Models.CustomerDue", b =>
                 {
