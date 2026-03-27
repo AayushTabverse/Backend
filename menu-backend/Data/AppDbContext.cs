@@ -28,6 +28,9 @@ public class AppDbContext : DbContext
     public DbSet<WebsiteContent> WebsiteContents => Set<WebsiteContent>();
     public DbSet<CustomerDue> CustomerDues => Set<CustomerDue>();
     public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<MarketingPost> MarketingPosts => Set<MarketingPost>();
+    public DbSet<GoogleReview> GoogleReviews => Set<GoogleReview>();
+    public DbSet<SocialMediaConnection> SocialMediaConnections => Set<SocialMediaConnection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -46,6 +49,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<WebsiteContent>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<CustomerDue>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<Customer>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<MarketingPost>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<GoogleReview>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<SocialMediaConnection>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
 
         // ── Tenant ──
         modelBuilder.Entity<Tenant>(entity =>
@@ -161,6 +167,12 @@ public class AppDbContext : DbContext
             entity.Property(e => e.PaidAmount).HasColumnType("decimal(10,2)");
             entity.Property(e => e.DueAmount).HasColumnType("decimal(10,2)");
             entity.HasIndex(e => new { e.TenantId, e.CustomerMobile });
+        });
+
+        // ── GoogleReview ──
+        modelBuilder.Entity<GoogleReview>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.GoogleReviewId }).IsUnique();
         });
     }
 

@@ -73,6 +73,9 @@ builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<IWebsiteService, WebsiteService>();
 builder.Services.AddScoped<ISubdomainService, SubdomainService>();
 builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
+builder.Services.AddScoped<IAiContentService, AiContentService>();
+builder.Services.AddScoped<IReviewService, ReviewService>();
+builder.Services.AddScoped<ISocialMediaService, SocialMediaService>();
 builder.Services.AddHttpClient();
 
 // ── SignalR ──
