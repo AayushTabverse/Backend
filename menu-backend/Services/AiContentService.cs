@@ -65,7 +65,7 @@ public class AiContentService : IAiContentService
         {
             try
             {
-                var imagePrompt = $"Professional restaurant marketing photo for {tenant.Name}: {parsed.caption}. Food photography style, warm lighting, appetizing, no text overlay.";
+                var imagePrompt = BuildImagePrompt(request.ContentType, tenant.Name, parsed.caption);
                 imageUrl = await GenerateImageAsync(imagePrompt);
             }
             catch
@@ -116,7 +116,8 @@ public class AiContentService : IAiContentService
             prompt = prompt,
             n = 1,
             size = "1024x1024",
-            quality = "standard"
+            quality = "hd",
+            style = "vivid"
         };
 
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/images/generations")
@@ -256,6 +257,43 @@ public class AiContentService : IAiContentService
     }
 
     // ── Private Helpers ──
+
+    private static string BuildImagePrompt(string contentType, string restaurantName, string caption)
+    {
+        var baseStyle = "Shot on a Canon EOS R5 with an 85mm f/1.4 lens, shallow depth of field, " +
+                        "natural ambient lighting with soft golden-hour warmth, " +
+                        "captured in a real upscale restaurant setting with authentic décor. " +
+                        "Photorealistic editorial food photography, NOT AI-generated looking. " +
+                        "Rich textures, organic imperfections, steam and condensation where appropriate. " +
+                        "Cinematic color grading, moody shadows, no text, no watermarks, no logos.";
+
+        var sceneDetail = contentType switch
+        {
+            "festival" =>
+                $"A vibrant festive celebration scene at {restaurantName}. " +
+                "Beautifully plated dishes arranged on a decorated table with subtle festive elements — " +
+                "warm string lights, fresh flowers, elegant tableware. " +
+                "The atmosphere feels celebratory yet sophisticated, like a real candid moment during a special dinner. " +
+                $"Scene depicts: {caption}",
+
+            "menu-highlight" =>
+                $"A hero close-up shot of a signature dish at {restaurantName}. " +
+                "The dish is the star — beautifully plated on artisan ceramic, " +
+                "garnished with fresh herbs, with a slightly blurred restaurant background showing warm bokeh lights. " +
+                "Side angle, dramatic side lighting casting natural shadows. Looks like a Bon Appétit magazine cover. " +
+                $"The dish: {caption}",
+
+            _ =>
+                $"An inviting lifestyle scene at {restaurantName}. " +
+                "A beautifully arranged spread of dishes on a rustic wooden table, " +
+                "overhead flat-lay mixed with an angled perspective. " +
+                "Natural props — linen napkins, vintage cutlery, fresh ingredients scattered artfully. " +
+                "Feels like an authentic moment captured at a trendy restaurant, warm and welcoming. " +
+                $"Scene depicts: {caption}"
+        };
+
+        return $"{sceneDetail} {baseStyle}";
+    }
 
     private string BuildPrompt(GeneratePostRequest request, string restaurantName, List<string> topItems, List<string> categories, string? customPrompt)
     {
