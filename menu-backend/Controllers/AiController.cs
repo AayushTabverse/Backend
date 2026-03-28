@@ -21,8 +21,15 @@ public class AiController : ControllerBase
     [HttpPost("generate-post")]
     public async Task<IActionResult> GeneratePost([FromBody] GeneratePostRequest request)
     {
-        var result = await _aiService.GeneratePostAsync(request);
-        return Ok(ApiResponse<GeneratedPostResponse>.Ok(result));
+        try
+        {
+            var result = await _aiService.GeneratePostAsync(request);
+            return Ok(ApiResponse<GeneratedPostResponse>.Ok(result));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     [HttpPost("generate-image")]

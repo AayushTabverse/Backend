@@ -19,7 +19,7 @@ public class MarketingPost : BaseEntity
     [Column(TypeName = "text")]
     public string? HashtagsJson { get; set; } // JSON array of hashtags
 
-    [MaxLength(500)]
+    [Column(TypeName = "text")]
     public string? ImageUrl { get; set; }
 
     [Column(TypeName = "text")]

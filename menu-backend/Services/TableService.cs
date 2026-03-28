@@ -105,7 +105,9 @@ public class TableService : ITableService
         var table = await _db.Tables.FindAsync(id)
             ?? throw new KeyNotFoundException("Table not found.");
 
+        // Soft-delete + rename to free the unique index slot for reuse
         table.IsDeleted = true;
+        table.TableNumber = $"{table.TableNumber}_deleted_{table.Id}";
         table.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
     }

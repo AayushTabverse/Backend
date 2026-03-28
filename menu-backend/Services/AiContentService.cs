@@ -16,6 +16,7 @@ public class AiContentService : IAiContentService
     private readonly ITenantProvider _tenantProvider;
     private readonly IConfiguration _config;
     private readonly HttpClient _httpClient;
+    private readonly IBlobStorageService _blobStorage;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -23,17 +24,27 @@ public class AiContentService : IAiContentService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public AiContentService(AppDbContext db, ITenantProvider tenantProvider, IConfiguration config, IHttpClientFactory httpClientFactory)
+    public AiContentService(AppDbContext db, ITenantProvider tenantProvider, IConfiguration config, IHttpClientFactory httpClientFactory, IBlobStorageService blobStorage)
     {
         _db = db;
         _tenantProvider = tenantProvider;
         _config = config;
         _httpClient = httpClientFactory.CreateClient();
+        _blobStorage = blobStorage;
     }
 
     public async Task<GeneratedPostResponse> GeneratePostAsync(GeneratePostRequest request)
     {
         var tenantId = _tenantProvider.TenantId!;
+
+        // ── Rate limit: max 2 posts per tenant per day ──
+        var todayStart = DateTime.UtcNow.Date;
+        var todayEnd = todayStart.AddDays(1);
+        var postsToday = await _db.MarketingPosts
+            .CountAsync(p => p.TenantId == tenantId && p.CreatedAt >= todayStart && p.CreatedAt < todayEnd);
+
+        if (postsToday >= 2)
+            throw new InvalidOperationException("Daily limit reached. You can generate up to 2 posts per day.");
 
         // Gather restaurant context for the AI prompt
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.TenantId == tenantId)
@@ -112,12 +123,11 @@ public class AiContentService : IAiContentService
 
         var requestBody = new
         {
-            model = "dall-e-3",
+            model = "gpt-image-1",
             prompt = prompt,
             n = 1,
             size = "1024x1024",
-            quality = "hd",
-            style = "vivid"
+            quality = "high"
         };
 
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/images/generations")
@@ -130,11 +140,26 @@ public class AiContentService : IAiContentService
         var json = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
-            throw new Exception($"DALL-E API error: {json}");
+            throw new Exception($"Image generation API error: {json}");
 
         using var doc = JsonDocument.Parse(json);
-        var url = doc.RootElement.GetProperty("data")[0].GetProperty("url").GetString();
-        return url ?? throw new Exception("No image URL returned.");
+        var data = doc.RootElement.GetProperty("data")[0];
+
+        // gpt-image-1 returns base64 by default; check for url first
+        if (data.TryGetProperty("url", out var urlProp))
+            return urlProp.GetString() ?? throw new Exception("No image URL returned.");
+
+        if (data.TryGetProperty("b64_json", out var b64Prop))
+        {
+            var base64 = b64Prop.GetString() ?? throw new Exception("No image data returned.");
+            var imageBytes = Convert.FromBase64String(base64);
+            using var stream = new MemoryStream(imageBytes);
+            var fileName = $"ai-{Guid.NewGuid()}.png";
+            var blobUrl = await _blobStorage.UploadImageAsync(stream, fileName, "image/png", "ai-posts");
+            return blobUrl;
+        }
+
+        throw new Exception("No image data returned from API.");
     }
 
     public async Task<MarketingPostResponse> ApprovePostAsync(Guid postId, ApprovePostRequest request)
