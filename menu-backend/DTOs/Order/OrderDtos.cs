@@ -64,6 +64,7 @@ public class OrderResponse
     public DateTime? ServedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public string? BillNumber { get; set; }
+    public string? CustomerSessionId { get; set; }
     public List<OrderItemResponse> Items { get; set; } = new();
     public PaymentSummary? Payment { get; set; }
 }

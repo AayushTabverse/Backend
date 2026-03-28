@@ -27,7 +27,8 @@ public class OrderController : ControllerBase
     {
         try
         {
-            var result = await _orderService.CreateOrderAsync(request, tenantId);
+            var customerSession = Request.Headers["X-Customer-Session"].FirstOrDefault();
+            var result = await _orderService.CreateOrderAsync(request, tenantId, customerSession);
             return Ok(ApiResponse<OrderResponse>.Ok(result, "Order placed successfully."));
         }
         catch (KeyNotFoundException ex)
@@ -42,6 +43,7 @@ public class OrderController : ControllerBase
 
     /// <summary>
     /// Get a specific order by ID.
+    /// For anonymous customers, only returns orders matching their session.
     /// </summary>
     [HttpGet("{id}")]
     [AllowAnonymous]
@@ -49,6 +51,18 @@ public class OrderController : ControllerBase
     {
         var result = await _orderService.GetOrderAsync(id);
         if (result == null) return NotFound(ApiResponse.Fail("Order not found."));
+
+        // If the caller is not authenticated, verify session ownership
+        if (!User.Identity?.IsAuthenticated ?? true)
+        {
+            var customerSession = Request.Headers["X-Customer-Session"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(result.CustomerSessionId) &&
+                result.CustomerSessionId != customerSession)
+            {
+                return NotFound(ApiResponse.Fail("Order not found."));
+            }
+        }
+
         return Ok(ApiResponse<OrderResponse>.Ok(result));
     }
 
@@ -98,12 +112,14 @@ public class OrderController : ControllerBase
 
     /// <summary>
     /// Get orders by table (for customer order tracking).
+    /// Optionally filtered by X-Customer-Session header.
     /// </summary>
     [HttpGet("by-table/{tableId}")]
     [AllowAnonymous]
     public async Task<IActionResult> GetOrdersByTable(Guid tableId)
     {
-        var result = await _orderService.GetOrdersByTableAsync(tableId);
+        var customerSession = Request.Headers["X-Customer-Session"].FirstOrDefault();
+        var result = await _orderService.GetOrdersByTableAsync(tableId, customerSession);
         return Ok(ApiResponse<List<OrderResponse>>.Ok(result));
     }
 

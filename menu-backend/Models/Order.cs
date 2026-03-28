@@ -54,6 +54,10 @@ public class Order : BaseEntity
     [MaxLength(20)]
     public string? BillNumber { get; set; }
 
+    /// <summary>Customer browser session ID — used to scope order visibility per QR scan session</summary>
+    [MaxLength(50)]
+    public string? CustomerSessionId { get; set; }
+
     // Navigation
     public RestaurantTable? Table { get; set; }
     public ICollection<OrderItem> Items { get; set; } = new List<OrderItem>();

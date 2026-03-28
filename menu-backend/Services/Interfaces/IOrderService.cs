@@ -4,12 +4,12 @@ namespace menu_backend.Services.Interfaces;
 
 public interface IOrderService
 {
-    Task<OrderResponse> CreateOrderAsync(CreateOrderRequest request, string tenantId);
+    Task<OrderResponse> CreateOrderAsync(CreateOrderRequest request, string tenantId, string? customerSessionId = null);
     Task<OrderResponse?> GetOrderAsync(Guid id);
     Task<OrderResponse> UpdateOrderStatusAsync(Guid id, UpdateOrderStatusRequest request);
     Task<LiveOrdersResponse> GetLiveOrdersAsync();
     Task<LiveOrdersResponse> GetKitchenOrdersAsync();
-    Task<List<OrderResponse>> GetOrdersByTableAsync(Guid tableId);
+    Task<List<OrderResponse>> GetOrdersByTableAsync(Guid tableId, string? customerSessionId = null);
     Task<OrderResponse?> GetOrderByNumberAsync(string orderNumber);
     Task<TableSessionSummary> GetTableSessionAsync(Guid tableId);
     Task<TableSessionSummary> ClearTableAsync(Guid tableId, ClearTableRequest request);

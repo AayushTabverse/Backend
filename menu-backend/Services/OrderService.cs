@@ -27,7 +27,7 @@ public class OrderService : IOrderService
         _printService = printService;
     }
 
-    public async Task<OrderResponse> CreateOrderAsync(CreateOrderRequest request, string tenantId)
+    public async Task<OrderResponse> CreateOrderAsync(CreateOrderRequest request, string tenantId, string? customerSessionId = null)
     {
         var table = await _db.Tables
             .IgnoreQueryFilters()
@@ -47,7 +47,8 @@ public class OrderService : IOrderService
             OrderNumber = orderNumber,
             TableId = request.TableId,
             Status = OrderStatus.Pending,
-            SpecialInstructions = request.SpecialInstructions
+            SpecialInstructions = request.SpecialInstructions,
+            CustomerSessionId = customerSessionId
         };
 
         decimal subTotal = 0;
@@ -197,10 +198,18 @@ public class OrderService : IOrderService
         };
     }
 
-    public async Task<List<OrderResponse>> GetOrdersByTableAsync(Guid tableId)
+    public async Task<List<OrderResponse>> GetOrdersByTableAsync(Guid tableId, string? customerSessionId = null)
     {
-        var orders = await GetFullOrderQuery()
-            .Where(o => o.TableId == tableId)
+        var query = GetFullOrderQuery()
+            .Where(o => o.TableId == tableId);
+
+        // If a customer session is provided, only return orders from that session
+        if (!string.IsNullOrEmpty(customerSessionId))
+        {
+            query = query.Where(o => o.CustomerSessionId == customerSessionId);
+        }
+
+        var orders = await query
             .OrderByDescending(o => o.CreatedAt)
             .Take(20)
             .ToListAsync();
@@ -243,6 +252,7 @@ public class OrderService : IOrderService
         ServedAt = order.ServedAt,
         CompletedAt = order.CompletedAt,
         BillNumber = order.BillNumber,
+        CustomerSessionId = order.CustomerSessionId,
         Items = order.Items.Select(i => new OrderItemResponse
         {
             Id = i.Id,
