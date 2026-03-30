@@ -240,4 +240,22 @@ public class OrderController : ControllerBase
         var bytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
         return File(bytes, "text/csv", $"bills-{from:yyyyMMdd}-to-{to:yyyyMMdd}.csv");
     }
+
+    /// <summary>
+    /// Create a bill for a past date (manual entry). Admin only.
+    /// </summary>
+    [HttpPost("bills/past")]
+    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    public async Task<IActionResult> CreatePastBill([FromBody] CreatePastBillRequest request)
+    {
+        try
+        {
+            var result = await _orderService.CreatePastBillAsync(request);
+            return Ok(ApiResponse<BillResponse>.Ok(result, "Past bill created successfully."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+    }
 }

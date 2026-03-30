@@ -12,4 +12,7 @@ public interface ITableService
     Task<byte[]> GenerateQrCodeAsync(Guid tableId, string baseUrl);
     Task<TableResponse> CallWaiterAsync(Guid tableId);
     Task DismissCallAsync(Guid tableId);
+    Task AssignTablesToWaiterAsync(Guid waiterId, List<Guid> tableIds);
+    Task<WaiterAssignmentResponse> GetWaiterAssignmentAsync(Guid waiterId);
+    Task<List<WaiterAssignmentResponse>> GetAllAssignmentsAsync();
 }

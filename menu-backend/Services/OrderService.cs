@@ -14,17 +14,20 @@ public class OrderService : IOrderService
     private readonly ITenantProvider _tenantProvider;
     private readonly IHubContext<OrderHub> _hub;
     private readonly IPrintService _printService;
+    private readonly IInventoryService _inventoryService;
 
     public OrderService(
         AppDbContext db,
         ITenantProvider tenantProvider,
         IHubContext<OrderHub> hub,
-        IPrintService printService)
+        IPrintService printService,
+        IInventoryService inventoryService)
     {
         _db = db;
         _tenantProvider = tenantProvider;
         _hub = hub;
         _printService = printService;
+        _inventoryService = inventoryService;
     }
 
     public async Task<OrderResponse> CreateOrderAsync(CreateOrderRequest request, string tenantId, string? customerSessionId = null)
@@ -138,6 +141,13 @@ public class OrderService : IOrderService
 
         order.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+
+        // Auto-deduct inventory when order is served or completed
+        if (status == OrderStatus.Served || status == OrderStatus.Completed)
+        {
+            try { await _inventoryService.DeductForOrderAsync(id); }
+            catch (Exception ex) { Console.WriteLine($"[Inventory] Deduction failed for order {id}: {ex.Message}"); }
+        }
 
         var response = MapOrder(order, order.Table?.TableNumber ?? "");
 
@@ -390,6 +400,13 @@ public class OrderService : IOrderService
 
         await _db.SaveChangesAsync();
 
+        // Auto-deduct inventory for orders that weren't already deducted at Served status
+        foreach (var order in activeOrders.Where(o => o.ServedAt == null))
+        {
+            try { await _inventoryService.DeductForOrderAsync(order.Id); }
+            catch (Exception ex) { Console.WriteLine($"[Inventory] Deduction failed for order {order.Id}: {ex.Message}"); }
+        }
+
         // Return final summary (all now completed — return them so UI can show the bill)
         var completed = await GetFullOrderQuery()
             .Where(o => o.TableId == tableId && o.CompletedAt == now)
@@ -572,6 +589,122 @@ public class OrderService : IOrderService
             PageSize = pageSize,
             TotalPages = totalPages,
             TotalRevenue = totalRevenue
+        };
+    }
+
+    public async Task<BillResponse> CreatePastBillAsync(CreatePastBillRequest request)
+    {
+        var tenantId = _tenantProvider.TenantId;
+
+        var table = await _db.Tables.FindAsync(request.TableId)
+            ?? throw new KeyNotFoundException("Table not found.");
+
+        // Generate bill number: BILL-YYYYMMDD-XXXX
+        var billDate = request.BillDate.Date;
+        var dateStr = billDate.ToString("yyyyMMdd");
+        var billCount = await _db.Orders
+            .IgnoreQueryFilters()
+            .Where(o => o.TenantId == tenantId && o.BillNumber != null)
+            .Select(o => o.BillNumber)
+            .Distinct()
+            .CountAsync();
+        var billNumber = $"BILL-{dateStr}-{(billCount + 1):D4}";
+
+        // Generate order number
+        var orderCount = await _db.Orders
+            .IgnoreQueryFilters()
+            .CountAsync(o => o.TenantId == tenantId && o.CreatedAt.Date == billDate);
+        var orderNumber = $"ORD-{dateStr}-{(orderCount + 1):D4}";
+
+        // Calculate totals
+        decimal subTotal = 0;
+        var orderItems = new List<OrderItem>();
+        foreach (var item in request.Items)
+        {
+            var menuItem = await _db.MenuItems
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(m => m.Id == item.MenuItemId && m.TenantId == tenantId && !m.IsDeleted)
+                ?? throw new KeyNotFoundException($"Menu item {item.MenuItemId} not found.");
+
+            var totalPrice = menuItem.Price * item.Quantity;
+            subTotal += totalPrice;
+            orderItems.Add(new OrderItem
+            {
+                TenantId = tenantId,
+                ItemName = menuItem.Name,
+                MenuItemId = menuItem.Id,
+                Quantity = item.Quantity,
+                UnitPrice = menuItem.Price,
+                TotalPrice = totalPrice
+            });
+        }
+
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.TenantId == tenantId);
+        var taxRate = tenant != null ? (tenant.CgstPercent + tenant.SgstPercent + tenant.ServiceChargePercent) / 100m : 0.05m;
+        var tax = Math.Round(subTotal * taxRate, 2);
+        var discount = Math.Max(0, request.DiscountAmount);
+        var totalAmount = subTotal + tax - discount;
+
+        var order = new Order
+        {
+            TenantId = tenantId,
+            OrderNumber = orderNumber,
+            TableId = request.TableId,
+            Status = OrderStatus.Completed,
+            Type = OrderType.DineIn,
+            SubTotal = subTotal,
+            Tax = tax,
+            DiscountAmount = discount,
+            TotalAmount = totalAmount,
+            BillNumber = billNumber,
+            CreatedAt = billDate,
+            AcceptedAt = billDate,
+            PreparedAt = billDate,
+            ServedAt = billDate,
+            CompletedAt = billDate,
+            Items = orderItems
+        };
+
+        _db.Orders.Add(order);
+
+        // Handle dues if partial payment
+        var paidAmount = request.PaidAmount > 0 ? Math.Min(request.PaidAmount, totalAmount) : totalAmount;
+        var dueAmount = totalAmount - paidAmount;
+
+        if (dueAmount > 0 && !string.IsNullOrWhiteSpace(request.CustomerName))
+        {
+            _db.CustomerDues.Add(new CustomerDue
+            {
+                TenantId = tenantId,
+                CustomerName = request.CustomerName.Trim(),
+                CustomerMobile = request.CustomerMobile?.Trim(),
+                BillNumber = billNumber,
+                BillAmount = totalAmount,
+                PaidAmount = paidAmount,
+                DueAmount = dueAmount,
+                Notes = request.Notes
+            });
+        }
+
+        await _db.SaveChangesAsync();
+
+        return new BillResponse
+        {
+            BillNumber = billNumber,
+            TableNumber = table.TableNumber,
+            TableLabel = table.Label,
+            OrderCount = 1,
+            TotalItems = orderItems.Count,
+            SubTotal = subTotal,
+            Tax = tax,
+            DiscountAmount = discount,
+            TotalAmount = totalAmount,
+            PaidAmount = paidAmount,
+            DueAmount = dueAmount,
+            CustomerName = request.CustomerName,
+            CustomerMobile = request.CustomerMobile,
+            CompletedAt = billDate,
+            Orders = new List<OrderResponse> { MapOrder(order, table.TableNumber) }
         };
     }
 }

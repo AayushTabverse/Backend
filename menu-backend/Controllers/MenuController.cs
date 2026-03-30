@@ -151,4 +151,35 @@ public class MenuController : ControllerBase
             return NotFound(ApiResponse.Fail(ex.Message));
         }
     }
+
+    // ── Ingredient Mapping ──
+
+    /// <summary>
+    /// Get the inventory ingredients linked to a menu item.
+    /// </summary>
+    [HttpGet("item/{menuItemId}/ingredients")]
+    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    public async Task<IActionResult> GetIngredients(Guid menuItemId)
+    {
+        var result = await _menuService.GetIngredientsAsync(menuItemId);
+        return Ok(ApiResponse<List<MenuItemIngredientResponse>>.Ok(result));
+    }
+
+    /// <summary>
+    /// Set (replace) the inventory ingredients for a menu item.
+    /// </summary>
+    [HttpPut("item/{menuItemId}/ingredients")]
+    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    public async Task<IActionResult> SetIngredients(Guid menuItemId, [FromBody] SetMenuItemIngredientsRequest request)
+    {
+        try
+        {
+            var result = await _menuService.SetIngredientsAsync(menuItemId, request);
+            return Ok(ApiResponse<List<MenuItemIngredientResponse>>.Ok(result, "Ingredients updated."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+    }
 }

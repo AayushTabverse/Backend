@@ -59,7 +59,7 @@ public class TableService : ITableService
             OrderStatus.Preparing, OrderStatus.Ready, OrderStatus.Served 
         };
 
-        return await _db.Tables
+        var tables = await _db.Tables
             .OrderBy(t => t.TableNumber)
             .Select(t => new TableResponse
             {
@@ -76,6 +76,21 @@ public class TableService : ITableService
                 QrData = t.QrData
             })
             .ToListAsync();
+
+        // Load assignments
+        var assignments = await _db.WaiterTableAssignments
+            .Include(a => a.Waiter)
+            .Where(a => !a.IsDeleted)
+            .ToListAsync();
+
+        foreach (var table in tables)
+        {
+            var tableAssignments = assignments.Where(a => a.TableId == table.Id).ToList();
+            table.AssignedWaiterIds = tableAssignments.Select(a => a.WaiterId.ToString()).ToList();
+            table.AssignedWaiterNames = tableAssignments.Select(a => a.Waiter?.FullName ?? "").ToList();
+        }
+
+        return tables;
     }
 
     public async Task<TableResponse?> GetTableAsync(Guid id)
@@ -170,5 +185,68 @@ public class TableService : ITableService
 
         await _hub.Clients.Group(table.TenantId)
             .SendAsync("WaiterCallDismissed", new { TableId = tableId, TableNumber = table.TableNumber });
+    }
+
+    public async Task AssignTablesToWaiterAsync(Guid waiterId, List<Guid> tableIds)
+    {
+        var tenantId = _tenantProvider.TenantId!;
+
+        // Remove existing assignments for this waiter
+        var existing = await _db.WaiterTableAssignments
+            .Where(a => a.WaiterId == waiterId && !a.IsDeleted)
+            .ToListAsync();
+
+        foreach (var a in existing)
+        {
+            a.IsDeleted = true;
+            a.UpdatedAt = DateTime.UtcNow;
+        }
+
+        // Add new assignments
+        foreach (var tableId in tableIds)
+        {
+            _db.WaiterTableAssignments.Add(new WaiterTableAssignment
+            {
+                TenantId = tenantId,
+                WaiterId = waiterId,
+                TableId = tableId
+            });
+        }
+
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<WaiterAssignmentResponse> GetWaiterAssignmentAsync(Guid waiterId)
+    {
+        var waiter = await _db.Users.FindAsync(waiterId);
+        var assignments = await _db.WaiterTableAssignments
+            .Where(a => a.WaiterId == waiterId && !a.IsDeleted)
+            .Select(a => a.TableId)
+            .ToListAsync();
+
+        return new WaiterAssignmentResponse
+        {
+            WaiterId = waiterId,
+            WaiterName = waiter?.FullName ?? "",
+            AssignedTableIds = assignments
+        };
+    }
+
+    public async Task<List<WaiterAssignmentResponse>> GetAllAssignmentsAsync()
+    {
+        var assignments = await _db.WaiterTableAssignments
+            .Include(a => a.Waiter)
+            .Where(a => !a.IsDeleted)
+            .ToListAsync();
+
+        return assignments
+            .GroupBy(a => a.WaiterId)
+            .Select(g => new WaiterAssignmentResponse
+            {
+                WaiterId = g.Key,
+                WaiterName = g.First().Waiter?.FullName ?? "",
+                AssignedTableIds = g.Select(a => a.TableId).ToList()
+            })
+            .ToList();
     }
 }

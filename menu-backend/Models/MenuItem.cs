@@ -37,4 +37,5 @@ public class MenuItem : BaseEntity
     // Navigation
     public MenuCategory? Category { get; set; }
     public ICollection<MenuItemModifier> Modifiers { get; set; } = new List<MenuItemModifier>();
+    public ICollection<MenuItemIngredient> Ingredients { get; set; } = new List<MenuItemIngredient>();
 }

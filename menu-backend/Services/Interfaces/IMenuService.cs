@@ -19,4 +19,8 @@ public interface IMenuService
     // Full menu (for customer view)
     Task<FullMenuResponse> GetFullMenuAsync(string tenantId);
     Task<FullMenuResponse> GetMenuByTableAsync(Guid tableId);
+
+    // Ingredient mapping
+    Task<List<MenuItemIngredientResponse>> GetIngredientsAsync(Guid menuItemId);
+    Task<List<MenuItemIngredientResponse>> SetIngredientsAsync(Guid menuItemId, SetMenuItemIngredientsRequest request);
 }

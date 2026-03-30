@@ -58,6 +58,7 @@ public class AuthService : IAuthService
         return new AuthResponse
         {
             Token = token,
+            UserId = admin.Id.ToString(),
             TenantId = tenantId,
             Email = admin.Email,
             FullName = admin.FullName,
@@ -83,6 +84,7 @@ public class AuthService : IAuthService
         return new AuthResponse
         {
             Token = token,
+            UserId = user.Id.ToString(),
             TenantId = user.TenantId,
             Email = user.Email,
             FullName = user.FullName,
@@ -122,6 +124,7 @@ public class AuthService : IAuthService
         return new AuthResponse
         {
             Token = token,
+            UserId = user.Id.ToString(),
             TenantId = user.TenantId,
             Email = user.Email,
             FullName = user.FullName,

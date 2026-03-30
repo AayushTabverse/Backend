@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using menu_backend.Data;
 
@@ -10,9 +11,11 @@ using menu_backend.Data;
 namespace menu_backend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260330153545_AddInventoryAndAssignments")]
+    partial class AddInventoryAndAssignments
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -480,46 +483,6 @@ namespace menu_backend.Migrations
                     b.HasIndex("CategoryId");
 
                     b.ToTable("MenuItems");
-                });
-
-            modelBuilder.Entity("menu_backend.Models.MenuItemIngredient", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid>("InventoryItemId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<Guid>("MenuItemId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<decimal>("QuantityUsed")
-                        .HasColumnType("decimal(10,4)");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(36)
-                        .HasColumnType("varchar(36)")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InventoryItemId");
-
-                    b.HasIndex("MenuItemId", "InventoryItemId")
-                        .IsUnique();
-
-                    b.ToTable("MenuItemIngredients");
                 });
 
             modelBuilder.Entity("menu_backend.Models.MenuItemModifier", b =>
@@ -1301,25 +1264,6 @@ namespace menu_backend.Migrations
                     b.Navigation("Category");
                 });
 
-            modelBuilder.Entity("menu_backend.Models.MenuItemIngredient", b =>
-                {
-                    b.HasOne("menu_backend.Models.InventoryItem", "InventoryItem")
-                        .WithMany()
-                        .HasForeignKey("InventoryItemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("menu_backend.Models.MenuItem", "MenuItem")
-                        .WithMany("Ingredients")
-                        .HasForeignKey("MenuItemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("InventoryItem");
-
-                    b.Navigation("MenuItem");
-                });
-
             modelBuilder.Entity("menu_backend.Models.MenuItemModifier", b =>
                 {
                     b.HasOne("menu_backend.Models.MenuItem", "MenuItem")
@@ -1433,8 +1377,6 @@ namespace menu_backend.Migrations
 
             modelBuilder.Entity("menu_backend.Models.MenuItem", b =>
                 {
-                    b.Navigation("Ingredients");
-
                     b.Navigation("Modifiers");
                 });
 

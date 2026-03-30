@@ -31,6 +31,10 @@ public class AppDbContext : DbContext
     public DbSet<MarketingPost> MarketingPosts => Set<MarketingPost>();
     public DbSet<GoogleReview> GoogleReviews => Set<GoogleReview>();
     public DbSet<SocialMediaConnection> SocialMediaConnections => Set<SocialMediaConnection>();
+    public DbSet<WaiterTableAssignment> WaiterTableAssignments => Set<WaiterTableAssignment>();
+    public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
+    public DbSet<InventoryLog> InventoryLogs => Set<InventoryLog>();
+    public DbSet<MenuItemIngredient> MenuItemIngredients => Set<MenuItemIngredient>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -52,6 +56,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<MarketingPost>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<GoogleReview>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<SocialMediaConnection>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<WaiterTableAssignment>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<InventoryItem>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<InventoryLog>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<MenuItemIngredient>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
 
         // ── Tenant ──
         modelBuilder.Entity<Tenant>(entity =>
@@ -173,6 +181,55 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<GoogleReview>(entity =>
         {
             entity.HasIndex(e => new { e.TenantId, e.GoogleReviewId }).IsUnique();
+        });
+
+        // ── WaiterTableAssignment ──
+        modelBuilder.Entity<WaiterTableAssignment>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.WaiterId, e.TableId }).IsUnique();
+            entity.HasOne(e => e.Waiter)
+                  .WithMany()
+                  .HasForeignKey(e => e.WaiterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Table)
+                  .WithMany()
+                  .HasForeignKey(e => e.TableId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── InventoryItem ──
+        modelBuilder.Entity<InventoryItem>(entity =>
+        {
+            entity.Property(e => e.CurrentQuantity).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.MinimumQuantity).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.CostPerUnit).HasColumnType("decimal(10,2)");
+            entity.HasIndex(e => new { e.TenantId, e.Name });
+        });
+
+        // ── InventoryLog ──
+        modelBuilder.Entity<InventoryLog>(entity =>
+        {
+            entity.Property(e => e.QuantityChange).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.QuantityAfter).HasColumnType("decimal(10,2)");
+            entity.HasOne(e => e.InventoryItem)
+                  .WithMany()
+                  .HasForeignKey(e => e.InventoryItemId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── MenuItemIngredient ──
+        modelBuilder.Entity<MenuItemIngredient>(entity =>
+        {
+            entity.Property(e => e.QuantityUsed).HasColumnType("decimal(10,4)");
+            entity.HasIndex(e => new { e.MenuItemId, e.InventoryItemId }).IsUnique();
+            entity.HasOne(e => e.MenuItem)
+                  .WithMany(m => m.Ingredients)
+                  .HasForeignKey(e => e.MenuItemId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.InventoryItem)
+                  .WithMany()
+                  .HasForeignKey(e => e.InventoryItemId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

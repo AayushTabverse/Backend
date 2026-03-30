@@ -40,4 +40,22 @@ public class TableResponse
     public DateTime? WaiterCalledAt { get; set; }
     public string? QrCodeUrl { get; set; }
     public string? QrData { get; set; }
+    public List<string>? AssignedWaiterIds { get; set; }
+    public List<string>? AssignedWaiterNames { get; set; }
+}
+
+public class AssignTablesRequest
+{
+    [Required]
+    public Guid WaiterId { get; set; }
+
+    [Required]
+    public List<Guid> TableIds { get; set; } = new();
+}
+
+public class WaiterAssignmentResponse
+{
+    public Guid WaiterId { get; set; }
+    public string WaiterName { get; set; } = string.Empty;
+    public List<Guid> AssignedTableIds { get; set; } = new();
 }

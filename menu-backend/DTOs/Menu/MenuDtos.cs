@@ -160,3 +160,31 @@ public class FullMenuResponse
     public string? GoogleMapsUrl { get; set; }
     public List<CategoryResponse> Categories { get; set; } = new();
 }
+
+// ── Ingredient Mapping DTOs ──
+
+public class SetMenuItemIngredientsRequest
+{
+    [Required]
+    public List<IngredientMapping> Ingredients { get; set; } = new();
+}
+
+public class IngredientMapping
+{
+    [Required]
+    public Guid InventoryItemId { get; set; }
+
+    /// <summary>Quantity of inventory item consumed per 1 unit of this menu item</summary>
+    [Required]
+    public decimal QuantityUsed { get; set; }
+}
+
+public class MenuItemIngredientResponse
+{
+    public Guid Id { get; set; }
+    public Guid InventoryItemId { get; set; }
+    public string InventoryItemName { get; set; } = string.Empty;
+    public string Unit { get; set; } = string.Empty;
+    public decimal QuantityUsed { get; set; }
+    public decimal CurrentStock { get; set; }
+}

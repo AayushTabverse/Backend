@@ -145,3 +145,31 @@ public class PaginatedBillsResponse
     public int TotalPages { get; set; }
     public decimal TotalRevenue { get; set; }
 }
+
+public class CreatePastBillRequest
+{
+    [Required]
+    public DateTime BillDate { get; set; }
+
+    [Required]
+    public Guid TableId { get; set; }
+
+    [Required]
+    [MinLength(1)]
+    public List<PastBillItem> Items { get; set; } = new();
+
+    public decimal DiscountAmount { get; set; }
+    public decimal PaidAmount { get; set; }
+    public string? CustomerName { get; set; }
+    public string? CustomerMobile { get; set; }
+    public string? Notes { get; set; }
+}
+
+public class PastBillItem
+{
+    [Required]
+    public Guid MenuItemId { get; set; }
+
+    [Range(1, 1000)]
+    public int Quantity { get; set; } = 1;
+}

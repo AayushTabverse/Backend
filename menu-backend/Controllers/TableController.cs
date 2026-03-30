@@ -132,4 +132,44 @@ public class TableController : ControllerBase
             return NotFound(ApiResponse.Fail(ex.Message));
         }
     }
+
+    /// <summary>
+    /// Assign tables to a waiter.
+    /// </summary>
+    [HttpPost("assign")]
+    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    public async Task<IActionResult> AssignTables([FromBody] AssignTablesRequest request)
+    {
+        try
+        {
+            await _tableService.AssignTablesToWaiterAsync(request.WaiterId, request.TableIds);
+            return Ok(ApiResponse.Ok("Tables assigned successfully."));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Get table assignments for a specific waiter.
+    /// </summary>
+    [HttpGet("assignments/{waiterId}")]
+    [Authorize(Roles = "RestaurantAdmin,SuperAdmin,Waiter")]
+    public async Task<IActionResult> GetWaiterAssignment(Guid waiterId)
+    {
+        var result = await _tableService.GetWaiterAssignmentAsync(waiterId);
+        return Ok(ApiResponse<WaiterAssignmentResponse>.Ok(result));
+    }
+
+    /// <summary>
+    /// Get all table assignments.
+    /// </summary>
+    [HttpGet("assignments")]
+    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    public async Task<IActionResult> GetAllAssignments()
+    {
+        var result = await _tableService.GetAllAssignmentsAsync();
+        return Ok(ApiResponse<List<WaiterAssignmentResponse>>.Ok(result));
+    }
 }

@@ -250,4 +250,49 @@ public class MenuService : IMenuService
         SortOrder = category.SortOrder,
         IsActive = category.IsActive
     };
+
+    // ── Ingredient Mapping ──
+
+    public async Task<List<MenuItemIngredientResponse>> GetIngredientsAsync(Guid menuItemId)
+    {
+        return await _db.MenuItemIngredients
+            .Where(i => i.MenuItemId == menuItemId)
+            .Include(i => i.InventoryItem)
+            .Select(i => new MenuItemIngredientResponse
+            {
+                Id = i.Id,
+                InventoryItemId = i.InventoryItemId,
+                InventoryItemName = i.InventoryItem!.Name,
+                Unit = i.InventoryItem.Unit.ToString(),
+                QuantityUsed = i.QuantityUsed,
+                CurrentStock = i.InventoryItem.CurrentQuantity
+            })
+            .ToListAsync();
+    }
+
+    public async Task<List<MenuItemIngredientResponse>> SetIngredientsAsync(Guid menuItemId, SetMenuItemIngredientsRequest request)
+    {
+        var item = await _db.MenuItems.FindAsync(menuItemId)
+            ?? throw new KeyNotFoundException("Menu item not found.");
+
+        // Remove existing ingredients
+        var existing = await _db.MenuItemIngredients
+            .Where(i => i.MenuItemId == menuItemId)
+            .ToListAsync();
+        _db.MenuItemIngredients.RemoveRange(existing);
+
+        // Add new ingredients
+        foreach (var ing in request.Ingredients)
+        {
+            _db.MenuItemIngredients.Add(new MenuItemIngredient
+            {
+                MenuItemId = menuItemId,
+                InventoryItemId = ing.InventoryItemId,
+                QuantityUsed = ing.QuantityUsed
+            });
+        }
+
+        await _db.SaveChangesAsync();
+        return await GetIngredientsAsync(menuItemId);
+    }
 }
