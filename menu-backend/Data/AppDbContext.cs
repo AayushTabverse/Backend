@@ -35,6 +35,7 @@ public class AppDbContext : DbContext
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<InventoryLog> InventoryLogs => Set<InventoryLog>();
     public DbSet<MenuItemIngredient> MenuItemIngredients => Set<MenuItemIngredient>();
+    public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +61,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<InventoryItem>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<InventoryLog>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<MenuItemIngredient>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+
+        // ── TenantSubscription (not a BaseEntity, separate filter) ──
+        modelBuilder.Entity<TenantSubscription>().HasQueryFilter(s => _tenantId == null || s.TenantId == _tenantId);
 
         // ── Tenant ──
         modelBuilder.Entity<Tenant>(entity =>
@@ -230,6 +234,17 @@ public class AppDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.InventoryItemId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── TenantSubscription ──
+        modelBuilder.Entity<TenantSubscription>(entity =>
+        {
+            entity.HasIndex(e => e.TenantId);
+            entity.HasOne(e => e.Tenant)
+                  .WithMany()
+                  .HasForeignKey(e => e.TenantId)
+                  .HasPrincipalKey(t => t.TenantId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 
