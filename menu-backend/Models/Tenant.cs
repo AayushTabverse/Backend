@@ -58,6 +58,10 @@ public class Tenant
 
     public decimal ServiceChargePercent { get; set; } = 0m;
 
+    public decimal MaxDiscountPercent { get; set; } = 0m;
+
+    public bool SpinWheelEnabled { get; set; } = false;
+
 
     [MaxLength(100)]
     public string? Subdomain { get; set; }

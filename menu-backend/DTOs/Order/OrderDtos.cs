@@ -44,6 +44,20 @@ public class ClearTableRequest
     public string? Notes { get; set; }
 }
 
+public class ApplyWheelDiscountRequest
+{
+    [Required]
+    public Guid TableId { get; set; }
+
+    [Required]
+    [Range(0, 10000)]
+    public decimal DiscountValue { get; set; }
+
+    /// <summary>percent or flat</summary>
+    [Required]
+    public string DiscountType { get; set; } = "percent";
+}
+
 public class OrderResponse
 {
     public Guid Id { get; set; }

@@ -8,4 +8,6 @@ public interface ISubscriptionService
     Task<List<SubscriptionPlanDto>> GetPlansAsync();
     Task<CreateRazorpaySubscriptionResponse> CreateSubscriptionAsync(CreateRazorpaySubscriptionRequest request);
     Task<SubscriptionStatusResponse> VerifyPaymentAsync(VerifyPaymentRequest request);
+    Task<SubscriptionStatusResponse> CancelSubscriptionAsync(CancelSubscriptionRequest request);
+    Task<UpdateSubscriptionResponse> UpdateSubscriptionAsync(UpdateSubscriptionRequest request);
 }

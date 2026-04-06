@@ -258,4 +258,30 @@ public class OrderController : ControllerBase
             return NotFound(ApiResponse.Fail(ex.Message));
         }
     }
+
+    /// <summary>
+    /// Apply spin-the-wheel discount to active orders (customer-facing, anonymous).
+    /// </summary>
+    [HttpPost("apply-wheel-discount")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ApplyWheelDiscount([FromBody] ApplyWheelDiscountRequest request, [FromQuery] string tenantId)
+    {
+        try
+        {
+            var customerSession = Request.Headers["X-Customer-Session"].FirstOrDefault();
+            if (string.IsNullOrEmpty(customerSession))
+                return BadRequest(ApiResponse.Fail("Customer session required."));
+
+            var result = await _orderService.ApplyWheelDiscountAsync(request, customerSession);
+            return Ok(ApiResponse<List<OrderResponse>>.Ok(result, "Discount applied successfully."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+    }
 }

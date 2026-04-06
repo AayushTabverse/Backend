@@ -46,4 +46,19 @@ public class SubscriptionController : ControllerBase
         var status = await _subscriptionService.VerifyPaymentAsync(request);
         return Ok(ApiResponse<SubscriptionStatusResponse>.Ok(status, "Subscription activated successfully!"));
     }
+
+    [HttpPost("cancel")]
+    public async Task<IActionResult> CancelSubscription([FromBody] CancelSubscriptionRequest request)
+    {
+        var status = await _subscriptionService.CancelSubscriptionAsync(request);
+        return Ok(ApiResponse<SubscriptionStatusResponse>.Ok(status, "Subscription cancelled successfully."));
+    }
+
+    [HttpPost("update")]
+    public async Task<IActionResult> UpdateSubscription([FromBody] UpdateSubscriptionRequest request)
+    {
+        var result = await _subscriptionService.UpdateSubscriptionAsync(request);
+        return Ok(ApiResponse<UpdateSubscriptionResponse>.Ok(result,
+            result.RequiresCheckout ? "Plan change requires new payment." : "Subscription updated successfully!"));
+    }
 }

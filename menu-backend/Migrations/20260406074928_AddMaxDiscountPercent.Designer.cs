@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using menu_backend.Data;
 
@@ -10,9 +11,11 @@ using menu_backend.Data;
 namespace menu_backend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260406074928_AddMaxDiscountPercent")]
+    partial class AddMaxDiscountPercent
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -989,9 +992,6 @@ namespace menu_backend.Migrations
 
                     b.Property<decimal>("SgstPercent")
                         .HasColumnType("decimal(18,2)");
-
-                    b.Property<bool>("SpinWheelEnabled")
-                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Subdomain")
                         .HasMaxLength(100)

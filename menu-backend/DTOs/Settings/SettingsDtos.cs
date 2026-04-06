@@ -21,6 +21,8 @@ public class BusinessSettingsResponse
     public decimal CgstPercent { get; set; }
     public decimal SgstPercent { get; set; }
     public decimal ServiceChargePercent { get; set; }
+    public decimal MaxDiscountPercent { get; set; }
+    public bool SpinWheelEnabled { get; set; }
 }
 
 public class UpdateBusinessSettingsRequest
@@ -71,4 +73,9 @@ public class UpdateBusinessSettingsRequest
 
     [Range(0, 100)]
     public decimal? ServiceChargePercent { get; set; }
+
+    [Range(0, 100)]
+    public decimal? MaxDiscountPercent { get; set; }
+
+    public bool? SpinWheelEnabled { get; set; }
 }

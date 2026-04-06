@@ -17,4 +17,5 @@ public interface IOrderService
     Task<PaginatedBillsResponse> GetBillsAsync(DateTime from, DateTime to, int page, int pageSize);
     Task<OrderResponse> CancelOrderItemAsync(Guid orderId, Guid itemId);
     Task<BillResponse> CreatePastBillAsync(CreatePastBillRequest request);
+    Task<List<OrderResponse>> ApplyWheelDiscountAsync(ApplyWheelDiscountRequest request, string customerSessionId);
 }

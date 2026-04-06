@@ -310,6 +310,7 @@ public class OrderService : IOrderService
             ActiveOrderCount = mapped.Count,
             GrandSubTotal = mapped.Sum(o => o.SubTotal),
             GrandTax = mapped.Sum(o => o.Tax),
+            GrandDiscount = mapped.Sum(o => o.DiscountAmount),
             GrandTotal = mapped.Sum(o => o.TotalAmount),
             Orders = mapped
         };
@@ -349,10 +350,11 @@ public class OrderService : IOrderService
 
             if (discount > 0 && totalBeforeDiscount > 0)
             {
-                // Proportional discount per order
+                // Proportional discount per order (add to any existing wheel discount)
                 var proportion = order.TotalAmount / totalBeforeDiscount;
-                order.DiscountAmount = Math.Round(discount * proportion, 2);
-                order.TotalAmount -= order.DiscountAmount;
+                var additionalDiscount = Math.Round(discount * proportion, 2);
+                order.DiscountAmount += additionalDiscount;
+                order.TotalAmount -= additionalDiscount;
             }
         }
 
@@ -427,7 +429,7 @@ public class OrderService : IOrderService
             ActiveOrderCount = 0,
             GrandSubTotal = mapped.Sum(o => o.SubTotal),
             GrandTax = mapped.Sum(o => o.Tax),
-            GrandDiscount = discount,
+            GrandDiscount = mapped.Sum(o => o.DiscountAmount),
             GrandTotal = mapped.Sum(o => o.TotalAmount),
             PaidAmount = paidAmount,
             DueAmount = dueAmount,
@@ -706,5 +708,67 @@ public class OrderService : IOrderService
             CompletedAt = billDate,
             Orders = new List<OrderResponse> { MapOrder(order, table.TableNumber) }
         };
+    }
+
+    public async Task<List<OrderResponse>> ApplyWheelDiscountAsync(ApplyWheelDiscountRequest request, string customerSessionId)
+    {
+        var tenantId = _tenantProvider.TenantId
+            ?? throw new UnauthorizedAccessException("No tenant context.");
+
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.TenantId == tenantId)
+            ?? throw new KeyNotFoundException("Tenant not found.");
+
+        if (!tenant.SpinWheelEnabled || tenant.MaxDiscountPercent <= 0)
+            throw new InvalidOperationException("Spin wheel is not enabled.");
+
+        var orders = await _db.Orders
+            .Include(o => o.Items).ThenInclude(i => i.MenuItem)
+            .Include(o => o.Table)
+            .Where(o => o.TableId == request.TableId
+                     && o.CustomerSessionId == customerSessionId
+                     && o.Status != OrderStatus.Completed
+                     && o.Status != OrderStatus.Cancelled)
+            .ToListAsync();
+
+        if (orders.Count == 0)
+            throw new KeyNotFoundException("No active orders found.");
+
+        // Already has a wheel discount — don't apply again
+        if (orders.Any(o => o.DiscountAmount > 0))
+            throw new InvalidOperationException("Discount already applied.");
+
+        var totalBefore = orders.Sum(o => o.TotalAmount);
+
+        // Calculate the total discount amount
+        decimal totalDiscountAmount;
+        if (request.DiscountType == "flat")
+        {
+            // Flat: cap at max% of total AND the flat value itself
+            var maxAllowed = Math.Round(totalBefore * tenant.MaxDiscountPercent / 100m, 2);
+            totalDiscountAmount = Math.Min(request.DiscountValue, maxAllowed);
+        }
+        else
+        {
+            // Percent: cap at max%
+            var pct = Math.Min(request.DiscountValue, tenant.MaxDiscountPercent);
+            totalDiscountAmount = Math.Round(totalBefore * pct / 100m, 2);
+        }
+
+        if (totalDiscountAmount <= 0) return orders.Select(o => MapOrder(o, o.Table?.TableNumber ?? "")).ToList();
+
+        // Distribute proportionally across orders
+        foreach (var order in orders)
+        {
+            var proportion = totalBefore > 0 ? order.TotalAmount / totalBefore : 0;
+            var disc = Math.Round(totalDiscountAmount * proportion, 2);
+            order.DiscountAmount += disc;
+            order.TotalAmount -= disc;
+            if (order.TotalAmount < 0) order.TotalAmount = 0;
+            order.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _db.SaveChangesAsync();
+
+        return orders.Select(o => MapOrder(o, o.Table?.TableNumber ?? "")).ToList();
     }
 }

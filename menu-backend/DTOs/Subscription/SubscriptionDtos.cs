@@ -50,3 +50,27 @@ public class VerifyPaymentRequest
     [Required]
     public string RazorpaySignature { get; set; } = string.Empty;
 }
+
+public class CancelSubscriptionRequest
+{
+    public bool CancelAtCycleEnd { get; set; } = true; // true = cancel at end of billing cycle
+}
+
+public class UpdateSubscriptionRequest
+{
+    [Required]
+    public string Plan { get; set; } = string.Empty; // Standard, Premium
+
+    [Required]
+    public string Cycle { get; set; } = string.Empty; // Monthly, Yearly
+
+    public bool ScheduleAtCycleEnd { get; set; } = false; // false = change immediately
+}
+
+public class UpdateSubscriptionResponse
+{
+    public bool RequiresCheckout { get; set; } // true = UPI fallback, frontend must open Razorpay checkout
+    public string? SubscriptionId { get; set; } // new Razorpay subscription ID (if RequiresCheckout)
+    public string? RazorpayKeyId { get; set; } // Razorpay key (if RequiresCheckout)
+    public SubscriptionStatusResponse? Status { get; set; } // updated status (if direct update worked)
+}

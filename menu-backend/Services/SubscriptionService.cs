@@ -132,9 +132,9 @@ public class SubscriptionService : ISubscriptionService
                      DisplayName = "Standard Monthly", Features = StandardFeatures },
             new() { Plan = "Standard", Cycle = "Yearly", Price = 9999m,
                      DisplayName = "Standard Yearly", Features = StandardFeatures },
-            new() { Plan = "Premium", Cycle = "Monthly", Price = 1999m,
+            new() { Plan = "Premium", Cycle = "Monthly", Price = 1699m,
                      DisplayName = "Premium Monthly", Features = PremiumFeatures },
-            new() { Plan = "Premium", Cycle = "Yearly", Price = 19999m,
+            new() { Plan = "Premium", Cycle = "Yearly", Price = 16999m,
                      DisplayName = "Premium Yearly", Features = PremiumFeatures },
         };
 
@@ -217,6 +217,98 @@ public class SubscriptionService : ISubscriptionService
     }
 
     // ── Helpers ──
+
+    public async Task<SubscriptionStatusResponse> CancelSubscriptionAsync(CancelSubscriptionRequest request)
+    {
+        var tenantId = _tenantProvider.TenantId
+            ?? throw new UnauthorizedAccessException("Tenant context required");
+
+        var mapping = await _db.Set<TenantSubscription>()
+            .Where(s => s.TenantId == tenantId)
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefaultAsync()
+            ?? throw new InvalidOperationException("No active subscription found");
+
+        var client = CreateRazorpayClient();
+        var payload = new { cancel_at_cycle_end = request.CancelAtCycleEnd ? 1 : 0 };
+        var content = new StringContent(
+            JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        var response = await client.PostAsync(
+            $"https://api.razorpay.com/v1/subscriptions/{mapping.RazorpaySubscriptionId}/cancel", content);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errBody = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"Razorpay cancel failed: {errBody}");
+        }
+
+        return await GetStatusAsync();
+    }
+
+    public async Task<UpdateSubscriptionResponse> UpdateSubscriptionAsync(UpdateSubscriptionRequest request)
+    {
+        var tenantId = _tenantProvider.TenantId
+            ?? throw new UnauthorizedAccessException("Tenant context required");
+
+        var mapping = await _db.Set<TenantSubscription>()
+            .Where(s => s.TenantId == tenantId)
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefaultAsync()
+            ?? throw new InvalidOperationException("No active subscription found");
+
+        var planKey = $"{request.Plan}{request.Cycle}";
+        var razorpayPlanId = _config[$"Razorpay:Plans:{planKey}"]
+            ?? throw new ArgumentException($"Razorpay plan ID not configured for {planKey}");
+
+        // Try direct PATCH update first (works for card payments)
+        var client = CreateRazorpayClient();
+        var payload = new
+        {
+            plan_id = razorpayPlanId,
+            schedule_change_at = request.ScheduleAtCycleEnd ? "cycle_end" : "now"
+        };
+        var content = new StringContent(
+            JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        var httpRequest = new HttpRequestMessage(HttpMethod.Patch,
+            $"https://api.razorpay.com/v1/subscriptions/{mapping.RazorpaySubscriptionId}")
+        { Content = content };
+
+        var response = await client.SendAsync(httpRequest);
+
+        if (response.IsSuccessStatusCode)
+        {
+            return new UpdateSubscriptionResponse
+            {
+                RequiresCheckout = false,
+                Status = await GetStatusAsync()
+            };
+        }
+
+        // Fallback for UPI: cancel old subscription and create a new one
+        var cancelClient = CreateRazorpayClient();
+        var cancelPayload = new { cancel_at_cycle_end = 0 };
+        var cancelContent = new StringContent(
+            JsonSerializer.Serialize(cancelPayload), Encoding.UTF8, "application/json");
+        await cancelClient.PostAsync(
+            $"https://api.razorpay.com/v1/subscriptions/{mapping.RazorpaySubscriptionId}/cancel", cancelContent);
+
+        // Create new subscription with the desired plan
+        var newSub = await CreateSubscriptionAsync(new CreateRazorpaySubscriptionRequest
+        {
+            Plan = request.Plan,
+            Cycle = request.Cycle
+        });
+
+        return new UpdateSubscriptionResponse
+        {
+            RequiresCheckout = true,
+            SubscriptionId = newSub.SubscriptionId,
+            RazorpayKeyId = newSub.RazorpayKeyId
+        };
+    }
+
+    // ── Private Helpers ──
 
     private HttpClient CreateRazorpayClient()
     {

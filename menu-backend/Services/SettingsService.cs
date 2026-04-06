@@ -56,6 +56,8 @@ public class SettingsService : ISettingsService
         if (request.CgstPercent != null) tenant.CgstPercent = request.CgstPercent.Value;
         if (request.SgstPercent != null) tenant.SgstPercent = request.SgstPercent.Value;
         if (request.ServiceChargePercent != null) tenant.ServiceChargePercent = request.ServiceChargePercent.Value;
+        if (request.MaxDiscountPercent != null) tenant.MaxDiscountPercent = request.MaxDiscountPercent.Value;
+        if (request.SpinWheelEnabled != null) tenant.SpinWheelEnabled = request.SpinWheelEnabled.Value;
 
         tenant.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -81,6 +83,8 @@ public class SettingsService : ISettingsService
         DirectPrint = tenant.DirectPrint,
         CgstPercent = tenant.CgstPercent,
         SgstPercent = tenant.SgstPercent,
-        ServiceChargePercent = tenant.ServiceChargePercent
+        ServiceChargePercent = tenant.ServiceChargePercent,
+        MaxDiscountPercent = tenant.MaxDiscountPercent,
+        SpinWheelEnabled = tenant.SpinWheelEnabled
     };
 }
