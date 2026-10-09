@@ -1,3 +1,4 @@
+using menu_backend.Helpers;
 using menu_backend.DTOs.Website;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -20,7 +21,7 @@ public class SubdomainController : ControllerBase
     /// Get subdomain suggestions based on restaurant name.
     /// </summary>
     [HttpGet("suggestions")]
-    [Authorize(Roles = "SuperAdmin,RestaurantAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> GetSuggestions()
     {
         try
@@ -36,7 +37,7 @@ public class SubdomainController : ControllerBase
     /// Check if a subdomain is available.
     /// </summary>
     [HttpGet("check/{subdomain}")]
-    [Authorize(Roles = "SuperAdmin,RestaurantAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> CheckAvailability(string subdomain)
     {
         try
@@ -51,7 +52,7 @@ public class SubdomainController : ControllerBase
     /// Claim a subdomain and create DNS record.
     /// </summary>
     [HttpPost("claim")]
-    [Authorize(Roles = "SuperAdmin,RestaurantAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> ClaimSubdomain([FromBody] ClaimSubdomainRequest request)
     {
         try
@@ -69,7 +70,7 @@ public class SubdomainController : ControllerBase
     /// Release the current subdomain.
     /// </summary>
     [HttpDelete("release")]
-    [Authorize(Roles = "SuperAdmin,RestaurantAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> ReleaseSubdomain()
     {
         try
@@ -85,7 +86,7 @@ public class SubdomainController : ControllerBase
     /// Get the current tenant's subdomain info.
     /// </summary>
     [HttpGet("current")]
-    [Authorize(Roles = "SuperAdmin,RestaurantAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> GetCurrentSubdomain()
     {
         try

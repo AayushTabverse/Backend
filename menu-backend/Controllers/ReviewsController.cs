@@ -1,4 +1,5 @@
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.DTOs.AI;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -8,7 +9,7 @@ namespace menu_backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+[Authorize(Roles = Roles.Owner)]
 public class ReviewsController : ControllerBase
 {
     private readonly IReviewService _reviewService;

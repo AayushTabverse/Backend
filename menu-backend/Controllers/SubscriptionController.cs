@@ -1,4 +1,5 @@
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.DTOs.Subscription;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -33,6 +34,7 @@ public class SubscriptionController : ControllerBase
         return Ok(ApiResponse<List<SubscriptionPlanDto>>.Ok(plans));
     }
 
+    [Authorize(Roles = Roles.Owner)]
     [HttpPost("create-subscription")]
     public async Task<IActionResult> CreateSubscription([FromBody] CreateRazorpaySubscriptionRequest request)
     {
@@ -40,6 +42,7 @@ public class SubscriptionController : ControllerBase
         return Ok(ApiResponse<CreateRazorpaySubscriptionResponse>.Ok(sub));
     }
 
+    [Authorize(Roles = Roles.Owner)]
     [HttpPost("verify-payment")]
     public async Task<IActionResult> VerifyPayment([FromBody] VerifyPaymentRequest request)
     {
@@ -47,6 +50,7 @@ public class SubscriptionController : ControllerBase
         return Ok(ApiResponse<SubscriptionStatusResponse>.Ok(status, "Subscription activated successfully!"));
     }
 
+    [Authorize(Roles = Roles.Owner)]
     [HttpPost("cancel")]
     public async Task<IActionResult> CancelSubscription([FromBody] CancelSubscriptionRequest request)
     {
@@ -54,6 +58,7 @@ public class SubscriptionController : ControllerBase
         return Ok(ApiResponse<SubscriptionStatusResponse>.Ok(status, "Subscription cancelled successfully."));
     }
 
+    [Authorize(Roles = Roles.Owner)]
     [HttpPost("update")]
     public async Task<IActionResult> UpdateSubscription([FromBody] UpdateSubscriptionRequest request)
     {

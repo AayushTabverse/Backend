@@ -1,4 +1,5 @@
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.DTOs.Website;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -21,7 +22,7 @@ public class WebsiteController : ControllerBase
     /// Get website content for the current tenant (admin).
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> GetWebsiteContent()
     {
         try
@@ -57,7 +58,7 @@ public class WebsiteController : ControllerBase
     /// Update website content for the current tenant.
     /// </summary>
     [HttpPut]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> UpdateWebsiteContent([FromBody] UpdateWebsiteContentRequest request)
     {
         try

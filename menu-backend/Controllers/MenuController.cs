@@ -1,4 +1,5 @@
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.DTOs.Menu;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -20,7 +21,7 @@ public class MenuController : ControllerBase
     // ── Categories ──
 
     [HttpPost("category")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> CreateCategory([FromBody] CreateCategoryRequest request)
     {
         var result = await _menuService.CreateCategoryAsync(request);
@@ -28,7 +29,7 @@ public class MenuController : ControllerBase
     }
 
     [HttpPut("category/{id}")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> UpdateCategory(Guid id, [FromBody] UpdateCategoryRequest request)
     {
         try
@@ -43,7 +44,7 @@ public class MenuController : ControllerBase
     }
 
     [HttpDelete("category/{id}")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> DeleteCategory(Guid id)
     {
         try
@@ -68,7 +69,7 @@ public class MenuController : ControllerBase
     // ── Items ──
 
     [HttpPost("item")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> CreateItem([FromBody] CreateMenuItemRequest request)
     {
         var result = await _menuService.CreateItemAsync(request);
@@ -76,7 +77,7 @@ public class MenuController : ControllerBase
     }
 
     [HttpPut("item/{id}")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> UpdateItem(Guid id, [FromBody] UpdateMenuItemRequest request)
     {
         try
@@ -91,7 +92,7 @@ public class MenuController : ControllerBase
     }
 
     [HttpDelete("item/{id}")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> DeleteItem(Guid id)
     {
         try
@@ -158,7 +159,7 @@ public class MenuController : ControllerBase
     /// Get the inventory ingredients linked to a menu item.
     /// </summary>
     [HttpGet("item/{menuItemId}/ingredients")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> GetIngredients(Guid menuItemId)
     {
         var result = await _menuService.GetIngredientsAsync(menuItemId);
@@ -169,7 +170,7 @@ public class MenuController : ControllerBase
     /// Set (replace) the inventory ingredients for a menu item.
     /// </summary>
     [HttpPut("item/{menuItemId}/ingredients")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> SetIngredients(Guid menuItemId, [FromBody] SetMenuItemIngredientsRequest request)
     {
         try

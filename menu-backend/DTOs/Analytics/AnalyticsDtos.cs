@@ -10,7 +10,7 @@ public class TopItemResponse
 
 public class SalesResponse
 {
-    public DateTime Date { get; set; }
+    public DateOnly Date { get; set; }
     public int OrderCount { get; set; }
     public decimal TotalSales { get; set; }
 }

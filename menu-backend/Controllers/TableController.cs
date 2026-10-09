@@ -1,4 +1,5 @@
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.DTOs.Table;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -8,7 +9,7 @@ namespace menu_backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "RestaurantAdmin,SuperAdmin,Waiter")]
+[Authorize(Roles = Roles.FloorStaff)]
 public class TableController : ControllerBase
 {
     private readonly ITableService _tableService;
@@ -20,6 +21,7 @@ public class TableController : ControllerBase
         _config = config;
     }
 
+    [Authorize(Roles = Roles.Management)]
     [HttpPost]
     public async Task<IActionResult> CreateTable([FromBody] CreateTableRequest request)
     {
@@ -35,7 +37,7 @@ public class TableController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin,Waiter")]
+    [Authorize(Roles = Roles.FloorStaff)]
     public async Task<IActionResult> GetTables()
     {
         var result = await _tableService.GetTablesAsync();
@@ -43,7 +45,7 @@ public class TableController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin,Waiter")]
+    [Authorize(Roles = Roles.FloorStaff)]
     public async Task<IActionResult> GetTable(Guid id)
     {
         var result = await _tableService.GetTableAsync(id);
@@ -51,6 +53,7 @@ public class TableController : ControllerBase
         return Ok(ApiResponse<TableResponse>.Ok(result));
     }
 
+    [Authorize(Roles = Roles.Management)]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateTable(Guid id, [FromBody] UpdateTableRequest request)
     {
@@ -65,6 +68,7 @@ public class TableController : ControllerBase
         }
     }
 
+    [Authorize(Roles = Roles.Management)]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteTable(Guid id)
     {
@@ -82,6 +86,7 @@ public class TableController : ControllerBase
     /// <summary>
     /// Generate QR code image for a table.
     /// </summary>
+    [Authorize(Roles = Roles.Management)]
     [HttpGet("{id}/qr")]
     public async Task<IActionResult> GenerateQr(Guid id)
     {
@@ -119,7 +124,7 @@ public class TableController : ControllerBase
     /// Dismiss waiter call — waiter/admin acknowledges the call.
     /// </summary>
     [HttpPost("{id}/dismiss-call")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin,Waiter")]
+    [Authorize(Roles = Roles.FloorStaff)]
     public async Task<IActionResult> DismissCall(Guid id)
     {
         try
@@ -137,7 +142,7 @@ public class TableController : ControllerBase
     /// Assign tables to a waiter.
     /// </summary>
     [HttpPost("assign")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> AssignTables([FromBody] AssignTablesRequest request)
     {
         try
@@ -155,7 +160,7 @@ public class TableController : ControllerBase
     /// Get table assignments for a specific waiter.
     /// </summary>
     [HttpGet("assignments/{waiterId}")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin,Waiter")]
+    [Authorize(Roles = Roles.FloorStaff)]
     public async Task<IActionResult> GetWaiterAssignment(Guid waiterId)
     {
         var result = await _tableService.GetWaiterAssignmentAsync(waiterId);
@@ -166,7 +171,7 @@ public class TableController : ControllerBase
     /// Get all table assignments.
     /// </summary>
     [HttpGet("assignments")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> GetAllAssignments()
     {
         var result = await _tableService.GetAllAssignmentsAsync();

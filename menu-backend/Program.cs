@@ -12,6 +12,9 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
 
+// ── Restaurant timezone (for "today", bill numbers, date filters) ──
+BusinessClock.Configure(config["App:TimeZone"]);
+
 // ── Database (Azure MySQL) ──
 var connectionString = config.GetConnectionString("DefaultConnection")!;
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -78,10 +81,15 @@ builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddScoped<ISocialMediaService, SocialMediaService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddScoped<IStaffService, StaffService>();
 builder.Services.AddHttpClient();
 
 // ── SignalR ──
-builder.Services.AddSignalR();
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.Converters.Add(new UtcDateTimeJsonConverter());
+    });
 
 // ── Controllers + JSON ──
 builder.Services.AddControllers()
@@ -89,6 +97,8 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+        // Stored timestamps are UTC; emit them with "Z" so browsers convert to local time correctly
+        options.JsonSerializerOptions.Converters.Add(new UtcDateTimeJsonConverter());
     });
 
 // ── CORS (allow Angular frontend) ──

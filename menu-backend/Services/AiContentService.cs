@@ -7,6 +7,7 @@ using menu_backend.DTOs.AI;
 using menu_backend.Models;
 using menu_backend.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using menu_backend.Helpers;
 
 namespace menu_backend.Services;
 
@@ -38,8 +39,7 @@ public class AiContentService : IAiContentService
         var tenantId = _tenantProvider.TenantId!;
 
         // ── Rate limit: max 2 posts per tenant per day ──
-        var todayStart = DateTime.UtcNow.Date;
-        var todayEnd = todayStart.AddDays(1);
+        var (todayStart, todayEnd) = BusinessClock.DayRangeUtc(BusinessClock.Today);
         var postsToday = await _db.MarketingPosts
             .CountAsync(p => p.TenantId == tenantId && p.CreatedAt >= todayStart && p.CreatedAt < todayEnd);
 
@@ -223,8 +223,9 @@ public class AiContentService : IAiContentService
     public async Task<List<ContentCalendarResponse>> GetContentCalendarAsync(int month, int year)
     {
         var tenantId = _tenantProvider.TenantId!;
-        var startDate = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var endDate = startDate.AddMonths(1);
+        var firstOfMonth = new DateOnly(year, month, 1);
+        var startDate = BusinessClock.StartOfDayUtc(firstOfMonth);
+        var endDate = BusinessClock.StartOfDayUtc(firstOfMonth.AddMonths(1));
 
         var posts = await _db.MarketingPosts
             .Where(p => p.TenantId == tenantId && p.CreatedAt >= startDate && p.CreatedAt < endDate)
@@ -232,7 +233,7 @@ public class AiContentService : IAiContentService
             .ToListAsync();
 
         return posts
-            .GroupBy(p => p.CreatedAt.Date)
+            .GroupBy(p => DateOnly.FromDateTime(BusinessClock.ToLocal(p.CreatedAt)))
             .Select(g => new ContentCalendarResponse
             {
                 Date = g.Key,

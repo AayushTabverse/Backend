@@ -1,4 +1,5 @@
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.DTOs.Settings;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -21,7 +22,7 @@ public class SettingsController : ControllerBase
     /// Get business settings for the current tenant.
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.AllStaff)]
     public async Task<IActionResult> GetSettings()
     {
         try
@@ -57,7 +58,7 @@ public class SettingsController : ControllerBase
     /// Update business settings.
     /// </summary>
     [HttpPut]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> UpdateSettings([FromBody] UpdateBusinessSettingsRequest request)
     {
         try

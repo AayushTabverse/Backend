@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using menu_backend.Data;
 
@@ -10,9 +11,11 @@ using menu_backend.Data;
 namespace menu_backend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261009145407_AddStaffAttendanceAndPayroll")]
+    partial class AddStaffAttendanceAndPayroll
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1176,6 +1179,7 @@ namespace menu_backend.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Email")
+                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
@@ -1190,10 +1194,6 @@ namespace menu_backend.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<string>("JobTitle")
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
                     b.Property<DateTime?>("LastLoginAt")
                         .HasColumnType("datetime(6)");
 
@@ -1201,6 +1201,7 @@ namespace menu_backend.Migrations
                         .HasColumnType("decimal(10,2)");
 
                     b.Property<string>("PasswordHash")
+                        .IsRequired()
                         .HasColumnType("longtext");
 
                     b.Property<string>("Phone")

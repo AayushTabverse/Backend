@@ -60,7 +60,7 @@ public class AuthService : IAuthService
             Token = token,
             UserId = admin.Id.ToString(),
             TenantId = tenantId,
-            Email = admin.Email,
+            Email = admin.Email ?? string.Empty,
             FullName = admin.FullName,
             Role = admin.Role.ToString(),
             ExpiresAt = _jwt.GetExpiry()
@@ -73,7 +73,8 @@ public class AuthService : IAuthService
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == request.Email && !u.IsDeleted && u.IsActive);
 
-        if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        if (user == null || user.Role == UserRole.Helper || user.PasswordHash == null
+            || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             throw new UnauthorizedAccessException("Invalid email or password.");
 
         user.LastLoginAt = DateTime.UtcNow;
@@ -86,32 +87,46 @@ public class AuthService : IAuthService
             Token = token,
             UserId = user.Id.ToString(),
             TenantId = user.TenantId,
-            Email = user.Email,
+            Email = user.Email ?? string.Empty,
             FullName = user.FullName,
             Role = user.Role.ToString(),
             ExpiresAt = _jwt.GetExpiry()
         };
     }
 
-    public async Task<AuthResponse> RegisterUserAsync(RegisterRequest request)
+    public async Task<AuthResponse> RegisterUserAsync(RegisterRequest request, UserRole actorRole)
     {
-        var exists = await _db.Users
-            .IgnoreQueryFilters()
-            .AnyAsync(u => u.Email == request.Email && u.TenantId == request.TenantId && !u.IsDeleted);
-
-        if (exists)
-            throw new InvalidOperationException("Email already registered for this tenant.");
-
-        if (!Enum.TryParse<UserRole>(request.Role, true, out var role))
+        if (!Enum.TryParse<UserRole>(request.Role, true, out var role) || !Enum.IsDefined(role))
             throw new ArgumentException("Invalid role.");
+
+        if (!Roles.CanManage(actorRole, role))
+            throw new UnauthorizedAccessException($"You are not allowed to add {role} accounts.");
+
+        // Payroll-only staff never log in, so they get no email or password
+        var payrollOnly = role == UserRole.Helper;
+        var email = payrollOnly ? null : request.Email?.Trim();
+
+        if (!payrollOnly && (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(request.Password)))
+            throw new ArgumentException("Email and password are required for staff who use the app.");
+
+        if (email != null)
+        {
+            var exists = await _db.Users
+                .IgnoreQueryFilters()
+                .AnyAsync(u => u.Email == email && u.TenantId == request.TenantId && !u.IsDeleted);
+
+            if (exists)
+                throw new InvalidOperationException("Email already registered for this tenant.");
+        }
 
         var user = new User
         {
             TenantId = request.TenantId,
             FullName = request.FullName,
-            Email = request.Email,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            Email = email,
+            PasswordHash = payrollOnly ? null : BCrypt.Net.BCrypt.HashPassword(request.Password),
             Phone = request.Phone,
+            JobTitle = string.IsNullOrWhiteSpace(request.JobTitle) ? null : request.JobTitle.Trim(),
             Role = role,
             IsActive = true
         };
@@ -119,14 +134,12 @@ public class AuthService : IAuthService
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
 
-        var token = _jwt.GenerateToken(user);
-
         return new AuthResponse
         {
-            Token = token,
+            Token = payrollOnly ? string.Empty : _jwt.GenerateToken(user),
             UserId = user.Id.ToString(),
             TenantId = user.TenantId,
-            Email = user.Email,
+            Email = user.Email ?? string.Empty,
             FullName = user.FullName,
             Role = user.Role.ToString(),
             ExpiresAt = _jwt.GetExpiry()
@@ -138,7 +151,7 @@ public class AuthService : IAuthService
         var user = await _db.Users.FindAsync(userId)
             ?? throw new KeyNotFoundException("User not found.");
 
-        if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
+        if (user.PasswordHash == null || !BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
             throw new UnauthorizedAccessException("Current password is incorrect.");
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
@@ -152,7 +165,7 @@ public class AuthService : IAuthService
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == email && !u.IsDeleted && u.IsActive);
 
-        if (user == null)
+        if (user == null || user.Role == UserRole.Helper)
             throw new KeyNotFoundException("No account found with this email.");
 
         // Generate a temporary password
@@ -180,6 +193,7 @@ public class AuthService : IAuthService
                 Email = u.Email,
                 Phone = u.Phone,
                 Role = u.Role.ToString(),
+                JobTitle = u.JobTitle,
                 IsActive = u.IsActive,
                 CreatedAt = u.CreatedAt,
                 LastLoginAt = u.LastLoginAt
@@ -187,27 +201,39 @@ public class AuthService : IAuthService
             .ToListAsync();
     }
 
-    public async Task ToggleUserActiveAsync(Guid userId, string tenantId)
+    public async Task ToggleUserActiveAsync(Guid userId, string tenantId, Guid actorId, UserRole actorRole)
     {
         var user = await _db.Users
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId && !u.IsDeleted)
             ?? throw new KeyNotFoundException("User not found.");
+
+        EnsureCanManage(user, actorId, actorRole);
 
         user.IsActive = !user.IsActive;
         user.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
     }
 
-    public async Task DeleteUserAsync(Guid userId, string tenantId)
+    public async Task DeleteUserAsync(Guid userId, string tenantId, Guid actorId, UserRole actorRole)
     {
         var user = await _db.Users
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId && !u.IsDeleted)
             ?? throw new KeyNotFoundException("User not found.");
 
+        EnsureCanManage(user, actorId, actorRole);
+
         user.IsDeleted = true;
         user.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+    }
+
+    private static void EnsureCanManage(User target, Guid actorId, UserRole actorRole)
+    {
+        if (target.Id == actorId)
+            throw new UnauthorizedAccessException("You cannot change your own account here.");
+        if (!Roles.CanManage(actorRole, target.Role))
+            throw new UnauthorizedAccessException($"You are not allowed to manage {target.Role} accounts.");
     }
 }

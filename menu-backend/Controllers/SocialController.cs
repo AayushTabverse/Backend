@@ -1,6 +1,7 @@
 using System.Text;
 using menu_backend.Data;
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.DTOs.AI;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -26,7 +27,7 @@ public class SocialController : ControllerBase
     /// Admin clicks "Connect Facebook" → frontend opens this URL in a popup.
     /// </summary>
     [HttpGet("facebook/auth-url")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public IActionResult GetFacebookAuthUrl()
     {
         var tenantId = _tenantProvider.TenantId!;
@@ -39,7 +40,7 @@ public class SocialController : ControllerBase
     /// Called by the frontend after the OAuth popup redirects back with ?code=...
     /// </summary>
     [HttpPost("facebook/callback")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> FacebookCallback([FromBody] OAuthCallbackRequest request)
     {
         var tenantId = _tenantProvider.TenantId!;
@@ -51,7 +52,7 @@ public class SocialController : ControllerBase
     /// Get the Google OAuth URL for Google Business Profile.
     /// </summary>
     [HttpGet("google/auth-url")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public IActionResult GetGoogleAuthUrl()
     {
         var tenantId = _tenantProvider.TenantId!;
@@ -63,7 +64,7 @@ public class SocialController : ControllerBase
     /// Google OAuth callback — exchange code for token.
     /// </summary>
     [HttpPost("google/callback")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> GoogleCallback([FromBody] OAuthCallbackRequest request)
     {
         var tenantId = _tenantProvider.TenantId!;
@@ -75,7 +76,7 @@ public class SocialController : ControllerBase
     /// Publish an approved post to connected social media platforms.
     /// </summary>
     [HttpPost("publish/{postId}")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> PublishPost(Guid postId)
     {
         var result = await _socialService.PublishPostAsync(postId);

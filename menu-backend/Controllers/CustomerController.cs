@@ -1,5 +1,6 @@
 using menu_backend.Data;
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,7 +10,7 @@ namespace menu_backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "RestaurantAdmin,SuperAdmin,Waiter")]
+[Authorize(Roles = Roles.FloorStaff)]
 public class CustomerController : ControllerBase
 {
     private readonly AppDbContext _db;
