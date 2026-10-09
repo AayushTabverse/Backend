@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.DTOs.Auth;
+using menu_backend.Models;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -53,20 +55,32 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Register a new staff user (requires RestaurantAdmin role).
+    /// Register a new staff user. Owners can add any staff role; managers only roles below manager.
     /// </summary>
     [HttpPost("register-user")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> RegisterUser([FromBody] RegisterRequest request)
     {
         try
         {
-            var result = await _authService.RegisterUserAsync(request);
+            // Staff are always created in the caller's own restaurant (SuperAdmin may target any tenant)
+            if (CurrentRole != UserRole.SuperAdmin)
+                request.TenantId = User.FindFirstValue("tenant_id")!;
+
+            var result = await _authService.RegisterUserAsync(request, CurrentRole);
             return Ok(ApiResponse<AuthResponse>.Ok(result, "User registered successfully."));
         }
         catch (InvalidOperationException ex)
         {
             return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Fail(ex.Message));
         }
     }
 
@@ -116,7 +130,7 @@ public class AuthController : ControllerBase
     /// Get all staff members for the current tenant.
     /// </summary>
     [HttpGet("staff")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> GetStaff()
     {
         var tenantId = User.FindFirstValue("tenant_id")!;
@@ -128,18 +142,22 @@ public class AuthController : ControllerBase
     /// Toggle a staff member's active status.
     /// </summary>
     [HttpPost("staff/{userId}/toggle-active")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> ToggleUserActive(Guid userId)
     {
         try
         {
             var tenantId = User.FindFirstValue("tenant_id")!;
-            await _authService.ToggleUserActiveAsync(userId, tenantId);
+            await _authService.ToggleUserActiveAsync(userId, tenantId, CurrentUserId, CurrentRole);
             return Ok(ApiResponse.Ok("User status toggled."));
         }
         catch (KeyNotFoundException ex)
         {
             return NotFound(ApiResponse.Fail(ex.Message));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Fail(ex.Message));
         }
     }
 
@@ -147,18 +165,26 @@ public class AuthController : ControllerBase
     /// Delete (soft) a staff member.
     /// </summary>
     [HttpDelete("staff/{userId}")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> DeleteUser(Guid userId)
     {
         try
         {
             var tenantId = User.FindFirstValue("tenant_id")!;
-            await _authService.DeleteUserAsync(userId, tenantId);
+            await _authService.DeleteUserAsync(userId, tenantId, CurrentUserId, CurrentRole);
             return Ok(ApiResponse.Ok("User deleted."));
         }
         catch (KeyNotFoundException ex)
         {
             return NotFound(ApiResponse.Fail(ex.Message));
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse.Fail(ex.Message));
+        }
     }
+
+    private UserRole CurrentRole => Enum.Parse<UserRole>(User.FindFirstValue(ClaimTypes.Role)!);
+
+    private Guid CurrentUserId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }

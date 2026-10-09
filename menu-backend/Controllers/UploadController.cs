@@ -1,3 +1,4 @@
+using menu_backend.Helpers;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -6,7 +7,7 @@ namespace menu_backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Roles = Roles.Management)]
 public class UploadController : ControllerBase
 {
     private readonly IBlobStorageService _blobService;

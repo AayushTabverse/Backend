@@ -1,5 +1,6 @@
 using menu_backend.Data;
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.DTOs.Due;
 using menu_backend.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -10,7 +11,7 @@ namespace menu_backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+[Authorize(Roles = Roles.Billing)]
 public class DueController : ControllerBase
 {
     private readonly AppDbContext _db;

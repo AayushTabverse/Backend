@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.DTOs.Inventory;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -9,7 +10,7 @@ namespace menu_backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+[Authorize(Roles = Roles.Management)]
 public class InventoryController : ControllerBase
 {
     private readonly IInventoryService _inventoryService;

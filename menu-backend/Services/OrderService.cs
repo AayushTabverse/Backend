@@ -5,6 +5,7 @@ using menu_backend.Models;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using menu_backend.Helpers;
 
 namespace menu_backend.Services;
 
@@ -37,11 +38,13 @@ public class OrderService : IOrderService
             .FirstOrDefaultAsync(t => t.Id == request.TableId && t.TenantId == tenantId && !t.IsDeleted)
             ?? throw new KeyNotFoundException("Table not found.");
 
-        // Generate order number: ORD-YYYYMMDD-XXXX
-        var today = DateTime.UtcNow.ToString("yyyyMMdd");
+        // Generate order number: ORD-YYYYMMDD-XXXX (restaurant-local day)
+        var localToday = BusinessClock.Today;
+        var today = localToday.ToString("yyyyMMdd");
+        var (dayStart, dayEnd) = BusinessClock.DayRangeUtc(localToday);
         var countToday = await _db.Orders
             .IgnoreQueryFilters()
-            .CountAsync(o => o.TenantId == tenantId && o.CreatedAt.Date == DateTime.UtcNow.Date);
+            .CountAsync(o => o.TenantId == tenantId && o.CreatedAt >= dayStart && o.CreatedAt < dayEnd);
         var orderNumber = $"ORD-{today}-{(countToday + 1):D4}";
 
         var order = new Order
@@ -325,8 +328,8 @@ public class OrderService : IOrderService
             .Where(o => o.TableId == tableId && ActiveStatuses.Contains(o.Status))
             .ToListAsync();
 
-        // Generate bill number: BILL-YYYYMMDD-XXXX
-        var today = DateTime.UtcNow.ToString("yyyyMMdd");
+        // Generate bill number: BILL-YYYYMMDD-XXXX (restaurant-local day)
+        var today = BusinessClock.Today.ToString("yyyyMMdd");
         var billCount = await _db.Orders
             .IgnoreQueryFilters()
             .Where(o => o.TenantId == table.TenantId && o.BillNumber != null)
@@ -439,13 +442,14 @@ public class OrderService : IOrderService
 
     public async Task<List<OrderResponse>> GetOrderHistoryAsync(DateTime from, DateTime to)
     {
-        var toEnd = to.Date.AddDays(1); // include entire 'to' day
+        // from/to are restaurant-local calendar days (inclusive)
+        var (start, end) = BusinessClock.DayRangeUtc(from, to);
 
         var orders = await GetFullOrderQuery()
             .Where(o => o.Status == OrderStatus.Completed
                      && o.CompletedAt.HasValue
-                     && o.CompletedAt.Value >= from.Date
-                     && o.CompletedAt.Value < toEnd)
+                     && o.CompletedAt.Value >= start
+                     && o.CompletedAt.Value < end)
             .OrderByDescending(o => o.CompletedAt)
             .ToListAsync();
 
@@ -494,7 +498,8 @@ public class OrderService : IOrderService
 
     public async Task<PaginatedBillsResponse> GetBillsAsync(DateTime from, DateTime to, int page, int pageSize)
     {
-        var toEnd = to.Date.AddDays(1);
+        // from/to are restaurant-local calendar days (inclusive)
+        var (start, end) = BusinessClock.DayRangeUtc(from, to);
 
         // Get all completed orders with bill numbers in range
         var billsQuery = _db.Orders
@@ -503,8 +508,8 @@ public class OrderService : IOrderService
             .Where(o => o.Status == OrderStatus.Completed
                      && o.BillNumber != null
                      && o.CompletedAt.HasValue
-                     && o.CompletedAt.Value >= from.Date
-                     && o.CompletedAt.Value < toEnd);
+                     && o.CompletedAt.Value >= start
+                     && o.CompletedAt.Value < end);
 
         // Group by BillNumber to get distinct bill count
         var allBillGroups = await billsQuery
@@ -543,8 +548,8 @@ public class OrderService : IOrderService
             .Where(o => o.Status == OrderStatus.Completed
                      && o.BillNumber != null
                      && o.CompletedAt.HasValue
-                     && o.CompletedAt.Value >= from.Date
-                     && o.CompletedAt.Value < toEnd)
+                     && o.CompletedAt.Value >= start
+                     && o.CompletedAt.Value < end)
             .OrderBy(o => o.CreatedAt)
             .ToListAsync())
             .Where(o => billNumberSet.Contains(o.BillNumber!))
@@ -602,8 +607,11 @@ public class OrderService : IOrderService
             ?? throw new KeyNotFoundException("Table not found.");
 
         // Generate bill number: BILL-YYYYMMDD-XXXX
-        var billDate = request.BillDate.Date;
-        var dateStr = billDate.ToString("yyyyMMdd");
+        // BillDate is a restaurant-local calendar day; stamp the bill at local noon of that day
+        var billDay = DateOnly.FromDateTime(request.BillDate);
+        var (billDayStart, billDayEnd) = BusinessClock.DayRangeUtc(billDay);
+        var billDate = billDayStart.AddHours(12);
+        var dateStr = billDay.ToString("yyyyMMdd");
         var billCount = await _db.Orders
             .IgnoreQueryFilters()
             .Where(o => o.TenantId == tenantId && o.BillNumber != null)
@@ -615,7 +623,7 @@ public class OrderService : IOrderService
         // Generate order number
         var orderCount = await _db.Orders
             .IgnoreQueryFilters()
-            .CountAsync(o => o.TenantId == tenantId && o.CreatedAt.Date == billDate);
+            .CountAsync(o => o.TenantId == tenantId && o.CreatedAt >= billDayStart && o.CreatedAt < billDayEnd);
         var orderNumber = $"ORD-{dateStr}-{(orderCount + 1):D4}";
 
         // Calculate totals

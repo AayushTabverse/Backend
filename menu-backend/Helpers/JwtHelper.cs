@@ -24,7 +24,7 @@ public class JwtHelper
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Email, user.Email ?? string.Empty),
             new(ClaimTypes.Name, user.FullName),
             new(ClaimTypes.Role, user.Role.ToString()),
             new("tenant_id", user.TenantId)

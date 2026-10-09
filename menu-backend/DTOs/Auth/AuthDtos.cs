@@ -18,16 +18,23 @@ public class RegisterRequest
     [MaxLength(100)]
     public string FullName { get; set; } = string.Empty;
 
-    [Required]
+    /// <summary>
+    /// Required for everyone except payroll-only staff (role "Helper").
+    /// </summary>
     [EmailAddress]
-    public string Email { get; set; } = string.Empty;
+    public string? Email { get; set; }
 
-    [Required]
+    /// <summary>
+    /// Required for everyone except payroll-only staff (role "Helper").
+    /// </summary>
     [MinLength(6)]
-    public string Password { get; set; } = string.Empty;
+    public string? Password { get; set; }
 
     [MaxLength(20)]
     public string? Phone { get; set; }
+
+    [MaxLength(100)]
+    public string? JobTitle { get; set; }
 
     [Required]
     public string Role { get; set; } = "Waiter";
@@ -102,9 +109,10 @@ public class StaffResponse
 {
     public Guid Id { get; set; }
     public string FullName { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
+    public string? Email { get; set; }
     public string? Phone { get; set; }
     public string Role { get; set; } = string.Empty;
+    public string? JobTitle { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? LastLoginAt { get; set; }

@@ -36,6 +36,8 @@ public class AppDbContext : DbContext
     public DbSet<InventoryLog> InventoryLogs => Set<InventoryLog>();
     public DbSet<MenuItemIngredient> MenuItemIngredients => Set<MenuItemIngredient>();
     public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
+    public DbSet<StaffAttendance> StaffAttendances => Set<StaffAttendance>();
+    public DbSet<StaffPayment> StaffPayments => Set<StaffPayment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -61,6 +63,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<InventoryItem>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<InventoryLog>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<MenuItemIngredient>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<StaffAttendance>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<StaffPayment>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
 
         // ── TenantSubscription (not a BaseEntity, separate filter) ──
         modelBuilder.Entity<TenantSubscription>().HasQueryFilter(s => _tenantId == null || s.TenantId == _tenantId);
@@ -236,6 +240,33 @@ public class AppDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // ── User ──
+        modelBuilder.Entity<User>()
+            .Property(e => e.MonthlySalary).HasColumnType("decimal(10,2)");
+
+        // ── StaffAttendance ──
+        modelBuilder.Entity<StaffAttendance>(entity =>
+        {
+            entity.Property(e => e.Date).HasColumnType("date");
+            entity.HasIndex(e => new { e.TenantId, e.UserId, e.Date }).IsUnique();
+            entity.HasIndex(e => new { e.TenantId, e.Date });
+            entity.HasOne<User>()
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── StaffPayment ──
+        modelBuilder.Entity<StaffPayment>(entity =>
+        {
+            entity.Property(e => e.Amount).HasColumnType("decimal(10,2)");
+            entity.HasIndex(e => new { e.TenantId, e.Year, e.Month });
+            entity.HasOne<User>()
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // ── TenantSubscription ──
         modelBuilder.Entity<TenantSubscription>(entity =>
         {
@@ -267,7 +298,9 @@ public class AppDbContext : DbContext
         {
             if (entry.State == EntityState.Added)
             {
-                entry.Entity.CreatedAt = DateTime.UtcNow;
+                // BaseEntity already defaults CreatedAt to UtcNow; keep explicit values (past bills, seed data)
+                if (entry.Entity.CreatedAt == default)
+                    entry.Entity.CreatedAt = DateTime.UtcNow;
                 if (!string.IsNullOrEmpty(_tenantId) && string.IsNullOrEmpty(entry.Entity.TenantId))
                     entry.Entity.TenantId = _tenantId;
             }

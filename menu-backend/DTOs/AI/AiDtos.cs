@@ -61,7 +61,7 @@ public class MarketingPostResponse
 
 public class ContentCalendarResponse
 {
-    public DateTime Date { get; set; }
+    public DateOnly Date { get; set; }
     public List<MarketingPostResponse> Posts { get; set; } = new();
 }
 

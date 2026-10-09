@@ -1,4 +1,5 @@
 using menu_backend.DTOs;
+using menu_backend.Helpers;
 using menu_backend.DTOs.Order;
 using menu_backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -70,7 +71,7 @@ public class OrderController : ControllerBase
     /// Get live orders (for admin/waiter panel — includes Pending).
     /// </summary>
     [HttpGet("live")]
-    [Authorize(Roles = "RestaurantAdmin,Kitchen,Waiter,SuperAdmin")]
+    [Authorize(Roles = Roles.AllStaff)]
     public async Task<IActionResult> GetLiveOrders()
     {
         var result = await _orderService.GetLiveOrdersAsync();
@@ -81,7 +82,7 @@ public class OrderController : ControllerBase
     /// Get kitchen orders — only Accepted, Preparing, Ready (excludes Pending).
     /// </summary>
     [HttpGet("kitchen")]
-    [Authorize(Roles = "RestaurantAdmin,Kitchen,SuperAdmin")]
+    [Authorize(Roles = Roles.KitchenDisplay)]
     public async Task<IActionResult> GetKitchenOrders()
     {
         var result = await _orderService.GetKitchenOrdersAsync();
@@ -92,7 +93,7 @@ public class OrderController : ControllerBase
     /// Update order status (kitchen/waiter).
     /// </summary>
     [HttpPut("status/{id}")]
-    [Authorize(Roles = "RestaurantAdmin,Kitchen,Waiter,SuperAdmin")]
+    [Authorize(Roles = Roles.AllStaff)]
     public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateOrderStatusRequest request)
     {
         try
@@ -139,7 +140,7 @@ public class OrderController : ControllerBase
     /// Get table session — all active orders at a table with grand total.
     /// </summary>
     [HttpGet("table-session/{tableId}")]
-    [Authorize(Roles = "RestaurantAdmin,Waiter,SuperAdmin")]
+    [Authorize(Roles = Roles.FloorStaff)]
     public async Task<IActionResult> GetTableSession(Guid tableId)
     {
         try
@@ -157,7 +158,7 @@ public class OrderController : ControllerBase
     /// Clear a table — marks all active orders as Completed (bill paid). Admin only.
     /// </summary>
     [HttpPost("clear-table/{tableId}")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Billing)]
     public async Task<IActionResult> ClearTable(Guid tableId, [FromBody] ClearTableRequest request)
     {
         try
@@ -175,7 +176,7 @@ public class OrderController : ControllerBase
     /// Get completed order history filtered by date range. Admin only.
     /// </summary>
     [HttpGet("history")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Billing)]
     public async Task<IActionResult> GetOrderHistory([FromQuery] DateTime from, [FromQuery] DateTime to)
     {
         var result = await _orderService.GetOrderHistoryAsync(from, to);
@@ -186,7 +187,7 @@ public class OrderController : ControllerBase
     /// Get paginated bills (grouped orders from cleared tables) filtered by date range.
     /// </summary>
     [HttpGet("bills")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Billing)]
     public async Task<IActionResult> GetBills([FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (page < 1) page = 1;
@@ -223,7 +224,7 @@ public class OrderController : ControllerBase
     /// Download order history as CSV. Admin only.
     /// </summary>
     [HttpGet("history/download")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Billing)]
     public async Task<IActionResult> DownloadOrderHistory([FromQuery] DateTime from, [FromQuery] DateTime to)
     {
         var orders = await _orderService.GetOrderHistoryAsync(from, to);
@@ -233,7 +234,7 @@ public class OrderController : ControllerBase
         foreach (var o in orders)
         {
             var items = string.Join(" | ", o.Items.Select(i => $"{i.Quantity}x {i.ItemName}"));
-            var completedDate = o.CompletedAt ?? o.CreatedAt;
+            var completedDate = BusinessClock.ToLocal(o.CompletedAt ?? o.CreatedAt);
             csv.AppendLine($"\"{o.OrderNumber}\",\"{o.TableNumber}\",\"{completedDate:yyyy-MM-dd}\",\"{completedDate:HH:mm}\",\"{items}\",{o.SubTotal},{o.Tax},{o.TotalAmount},\"{o.Status}\"");
         }
 
@@ -245,7 +246,7 @@ public class OrderController : ControllerBase
     /// Create a bill for a past date (manual entry). Admin only.
     /// </summary>
     [HttpPost("bills/past")]
-    [Authorize(Roles = "RestaurantAdmin,SuperAdmin")]
+    [Authorize(Roles = Roles.Management)]
     public async Task<IActionResult> CreatePastBill([FromBody] CreatePastBillRequest request)
     {
         try

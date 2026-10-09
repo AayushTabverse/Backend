@@ -3,6 +3,7 @@ using menu_backend.DTOs.Analytics;
 using menu_backend.Models;
 using menu_backend.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using menu_backend.Helpers;
 
 namespace menu_backend.Services;
 
@@ -17,10 +18,10 @@ public class AnalyticsService : IAnalyticsService
 
     public async Task<DashboardSummaryResponse> GetDashboardSummaryAsync()
     {
-        var today = DateTime.UtcNow.Date;
+        var (todayStart, todayEnd) = BusinessClock.DayRangeUtc(BusinessClock.Today);
 
         var todayOrders = await _db.Orders
-            .Where(o => o.CreatedAt.Date == today && o.Status != OrderStatus.Cancelled)
+            .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.Status != OrderStatus.Cancelled)
             .ToListAsync();
 
         var liveStatuses = new[] { OrderStatus.Pending, OrderStatus.Accepted, OrderStatus.Preparing, OrderStatus.Ready };
@@ -75,9 +76,16 @@ public class AnalyticsService : IAnalyticsService
 
     public async Task<List<SalesResponse>> GetSalesAsync(DateTime from, DateTime to)
     {
-        return await _db.Orders
-            .Where(o => o.CreatedAt >= from && o.CreatedAt <= to && o.Status != OrderStatus.Cancelled)
-            .GroupBy(o => o.CreatedAt.Date)
+        // from/to are restaurant-local calendar days; group by local day, not UTC day
+        var (start, end) = BusinessClock.DayRangeUtc(from, to);
+
+        var orders = await _db.Orders
+            .Where(o => o.CreatedAt >= start && o.CreatedAt < end && o.Status != OrderStatus.Cancelled)
+            .Select(o => new { o.CreatedAt, o.TotalAmount })
+            .ToListAsync();
+
+        return orders
+            .GroupBy(o => DateOnly.FromDateTime(BusinessClock.ToLocal(o.CreatedAt)))
             .Select(g => new SalesResponse
             {
                 Date = g.Key,
@@ -85,16 +93,21 @@ public class AnalyticsService : IAnalyticsService
                 TotalSales = g.Sum(o => o.TotalAmount)
             })
             .OrderBy(x => x.Date)
-            .ToListAsync();
+            .ToList();
     }
 
     public async Task<List<PeakHoursResponse>> GetPeakHoursAsync(int days = 7)
     {
         var fromDate = DateTime.UtcNow.AddDays(-days);
 
-        return await _db.Orders
+        var orders = await _db.Orders
             .Where(o => o.CreatedAt >= fromDate && o.Status != OrderStatus.Cancelled)
-            .GroupBy(o => o.CreatedAt.Hour)
+            .Select(o => new { o.CreatedAt, o.TotalAmount })
+            .ToListAsync();
+
+        // Group by the restaurant's local hour, not the UTC hour
+        return orders
+            .GroupBy(o => BusinessClock.ToLocal(o.CreatedAt).Hour)
             .Select(g => new PeakHoursResponse
             {
                 Hour = g.Key,
@@ -102,6 +115,6 @@ public class AnalyticsService : IAnalyticsService
                 TotalSales = g.Sum(o => o.TotalAmount)
             })
             .OrderBy(x => x.Hour)
-            .ToListAsync();
+            .ToList();
     }
 }
