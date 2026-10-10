@@ -14,10 +14,46 @@ namespace menu_backend.Controllers;
 public class InventoryController : ControllerBase
 {
     private readonly IInventoryService _inventoryService;
+    private readonly IInventoryImportService _importService;
 
-    public InventoryController(IInventoryService inventoryService)
+    public InventoryController(IInventoryService inventoryService, IInventoryImportService importService)
     {
         _inventoryService = inventoryService;
+        _importService = importService;
+    }
+
+    // ── Excel import ──
+
+    [HttpGet("import/template")]
+    public IActionResult DownloadImportTemplate()
+    {
+        return File(_importService.BuildTemplate(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "tabverse-inventory-template.xlsx");
+    }
+
+    /// <summary>
+    /// Upload an Excel sheet of stock items. With apply=false (default) nothing is saved and the parsed
+    /// rows are returned for preview; with apply=true valid rows are imported and error rows skipped.
+    /// </summary>
+    [HttpPost("import")]
+    [RequestSizeLimit(ExcelImport.MaxFileBytes + 64 * 1024)]
+    public async Task<IActionResult> ImportInventory(IFormFile? file, [FromQuery] bool updateExisting = true, [FromQuery] bool apply = false)
+    {
+        if (ExcelImport.ValidateFile(file) is { } fileError)
+            return BadRequest(ApiResponse.Fail(fileError));
+
+        try
+        {
+            await using var stream = file!.OpenReadStream();
+            var result = await _importService.ImportAsync(stream, updateExisting, apply, User.FindFirstValue(ClaimTypes.Name));
+            var message = result.Applied ? $"Imported {result.CreateCount} new and updated {result.UpdateCount} items." : null;
+            return Ok(ApiResponse<InventoryImportResult>.Ok(result, message));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     [HttpGet]
@@ -101,6 +137,13 @@ public class InventoryController : ControllerBase
     {
         var logs = await _inventoryService.GetLogsAsync(itemId, days);
         return Ok(ApiResponse<List<InventoryLogResponse>>.Ok(logs));
+    }
+
+    /// <summary>Inventory analytics for the last N days (stock health, usage, waste, runway, dead stock).</summary>
+    [HttpGet("analytics")]
+    public async Task<IActionResult> GetAnalytics([FromQuery] int days = 30)
+    {
+        return Ok(ApiResponse<InventoryAnalyticsResponse>.Ok(await _inventoryService.GetAnalyticsAsync(days)));
     }
 
     [HttpGet("summary")]

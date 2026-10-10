@@ -66,6 +66,37 @@ public class Tenant
     [MaxLength(100)]
     public string? Subdomain { get; set; }
 
+    /// <summary>
+    /// Outcome of the last DNS record attempt for <see cref="Subdomain"/>:
+    /// "created", "failed" or "not_configured" (no DNS API token on the server). Null = never attempted.
+    /// </summary>
+    [MaxLength(20)]
+    public string? SubdomainDnsStatus { get; set; }
+
+    /// <summary>Owner-safe reason when the DNS step failed.</summary>
+    [MaxLength(500)]
+    public string? SubdomainDnsError { get; set; }
+
+    public DateTime? SubdomainDnsUpdatedAt { get; set; }
+
+    // ── Bring-your-own domain (e.g. www.spicegarden.in) ──
+
+    /// <summary>Restaurant's own domain, lowercase ASCII (punycode for non-Latin names).</summary>
+    [MaxLength(253)]
+    public string? CustomDomain { get; set; }
+
+    /// <summary>Random token the owner publishes as a TXT record to prove they control the domain.</summary>
+    [MaxLength(64)]
+    public string? CustomDomainToken { get; set; }
+
+    public DateTime? CustomDomainAddedAt { get; set; }
+
+    /// <summary>When the ownership TXT record was first seen. Only verified domains route to the site.</summary>
+    public DateTime? CustomDomainVerifiedAt { get; set; }
+
+    /// <summary>When the domain first served the website (DNS + hosting + HTTPS all working).</summary>
+    public DateTime? CustomDomainActiveAt { get; set; }
+
     [MaxLength(50)]
     public string? CurrencyCode { get; set; } = "INR";
 

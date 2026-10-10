@@ -82,7 +82,22 @@ builder.Services.AddScoped<ISocialMediaService, SocialMediaService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IStaffService, StaffService>();
+builder.Services.AddScoped<IMenuImportService, MenuImportService>();
+builder.Services.AddScoped<IStaffImportService, StaffImportService>();
+builder.Services.AddScoped<IInventoryImportService, InventoryImportService>();
+builder.Services.AddScoped<ICustomDomainService, CustomDomainService>();
+builder.Services.AddScoped<IAnalyticsInsightsService, AnalyticsInsightsService>();
+builder.Services.AddSingleton<DnsOverHttps>();
+builder.Services.AddSingleton<SiteProbe>();
 builder.Services.AddHttpClient();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient("doh", c => c.Timeout = TimeSpan.FromSeconds(6));
+// Website status check: follow redirects but don't hang on slow hosts
+builder.Services.AddHttpClient("site-check", c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(10);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("TabverseSiteCheck/1.0");
+});
 
 // ── SignalR ──
 builder.Services.AddSignalR()
@@ -104,6 +119,9 @@ builder.Services.AddControllers()
 // ── CORS (allow Angular frontend) ──
 builder.Services.AddCors(options =>
 {
+    // Public website reads (restaurant sites on their own domains call these). Read-only, no cookies.
+    options.AddPolicy("PublicSite", policy => policy.AllowAnyOrigin().AllowAnyHeader().WithMethods("GET"));
+
     options.AddPolicy("AllowFrontend", policy =>
     {
         policy.WithOrigins(
@@ -115,7 +133,9 @@ builder.Services.AddCors(options =>
                 var host = new Uri(origin).Host;
                 return host.EndsWith(".tabverse.in", StringComparison.OrdinalIgnoreCase)
                     || host == "tabverse.in"
-                    || host == "localhost";
+                    || host == "localhost"
+                    // Local subdomain testing (name.localhost:4201) in development only
+                    || (builder.Environment.IsDevelopment() && host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase));
             })
             .AllowAnyHeader()
             .AllowAnyMethod()

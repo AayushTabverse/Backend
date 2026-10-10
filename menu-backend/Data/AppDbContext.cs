@@ -73,6 +73,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Tenant>(entity =>
         {
             entity.HasIndex(e => e.TenantId).IsUnique();
+            entity.HasIndex(e => e.CustomDomain).IsUnique(); // MySQL allows many NULLs
         });
 
         // ── User ──

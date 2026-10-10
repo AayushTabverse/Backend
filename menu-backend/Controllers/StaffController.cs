@@ -15,10 +15,46 @@ namespace menu_backend.Controllers;
 public class StaffController : ControllerBase
 {
     private readonly IStaffService _staffService;
+    private readonly IStaffImportService _importService;
 
-    public StaffController(IStaffService staffService)
+    public StaffController(IStaffService staffService, IStaffImportService importService)
     {
         _staffService = staffService;
+        _importService = importService;
+    }
+
+    // ── Excel import ──
+
+    [HttpGet("import/template")]
+    public IActionResult DownloadImportTemplate()
+    {
+        return File(_importService.BuildTemplate(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "tabverse-staff-template.xlsx");
+    }
+
+    /// <summary>
+    /// Upload an Excel sheet of staff. With apply=false (default) nothing is saved and the parsed rows
+    /// are returned for preview; with apply=true valid rows are imported and error rows skipped.
+    /// </summary>
+    [HttpPost("import")]
+    [RequestSizeLimit(ExcelImport.MaxFileBytes + 64 * 1024)]
+    public async Task<IActionResult> ImportStaff(IFormFile? file, [FromQuery] bool updateExisting = true, [FromQuery] bool apply = false)
+    {
+        if (ExcelImport.ValidateFile(file) is { } fileError)
+            return BadRequest(ApiResponse.Fail(fileError));
+
+        try
+        {
+            await using var stream = file!.OpenReadStream();
+            var result = await _importService.ImportAsync(stream, updateExisting, apply, CurrentRole);
+            var message = result.Applied ? $"Added {result.CreateCount} and updated {result.UpdateCount} staff." : null;
+            return Ok(ApiResponse<StaffImportResult>.Ok(result, message));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>

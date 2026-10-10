@@ -21,4 +21,16 @@ public interface ISubdomainService
 
     /// <summary>Resolve a subdomain to a tenantId (public, for subdomain-based routing).</summary>
     Task<string?> ResolveTenantIdAsync(string subdomain);
+
+    /// <summary>Claim the subdomain (setting up DNS if needed) and publish the website in one step.</summary>
+    Task<WebsiteStatusResponse> PublishAsync(string subdomain);
+
+    /// <summary>Re-run the DNS step for the current subdomain.</summary>
+    Task<WebsiteStatusResponse> RetryDnsAsync();
+
+    /// <summary>
+    /// Owner-facing website status from facts: stored DNS outcome, whether the address resolves and
+    /// whether the site responds. Cached ~15s unless <paramref name="forceCheck"/>.
+    /// </summary>
+    Task<WebsiteStatusResponse> GetStatusAsync(bool forceCheck = false);
 }

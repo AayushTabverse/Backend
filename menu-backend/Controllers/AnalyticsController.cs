@@ -13,10 +13,33 @@ namespace menu_backend.Controllers;
 public class AnalyticsController : ControllerBase
 {
     private readonly IAnalyticsService _analyticsService;
+    private readonly IAnalyticsInsightsService _insights;
 
-    public AnalyticsController(IAnalyticsService analyticsService)
+    public AnalyticsController(IAnalyticsService analyticsService, IAnalyticsInsightsService insights)
     {
         _analyticsService = analyticsService;
+        _insights = insights;
+    }
+
+    /// <summary>Today so far vs the same weekday last week, live status and alerts (Dashboard).</summary>
+    [HttpGet("today")]
+    public async Task<IActionResult> GetToday()
+    {
+        return Ok(ApiResponse<TodayDashboardResponse>.Ok(await _insights.GetTodayAsync()));
+    }
+
+    /// <summary>Analytics for local days from..to (inclusive), compared with the previous period of the same length.</summary>
+    [HttpGet("overview")]
+    public async Task<IActionResult> GetOverview([FromQuery] DateOnly from, [FromQuery] DateOnly to)
+    {
+        try
+        {
+            return Ok(ApiResponse<AnalyticsOverviewResponse>.Ok(await _insights.GetOverviewAsync(from, to)));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     [HttpGet("dashboard")]

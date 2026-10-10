@@ -67,6 +67,54 @@ public class SubdomainController : ControllerBase
     }
 
     /// <summary>
+    /// Choose a subdomain and publish the website in one step. Returns the honest website status.
+    /// </summary>
+    [HttpPost("publish")]
+    [Authorize(Roles = Roles.Owner)]
+    public async Task<IActionResult> Publish([FromBody] PublishWebsiteRequest request)
+    {
+        try
+        {
+            return Ok(await _subdomainService.PublishAsync(request.Subdomain));
+        }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (KeyNotFoundException ex) { return NotFound(new { message = ex.Message }); }
+        catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    /// <summary>
+    /// Re-run the DNS step for the current subdomain (after a failure).
+    /// </summary>
+    [HttpPost("retry-dns")]
+    [Authorize(Roles = Roles.Owner)]
+    public async Task<IActionResult> RetryDns()
+    {
+        try
+        {
+            return Ok(await _subdomainService.RetryDnsAsync());
+        }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (KeyNotFoundException ex) { return NotFound(new { message = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    /// <summary>
+    /// Current website status (what visitors can see, and why not yet). refresh=true skips the short cache.
+    /// </summary>
+    [HttpGet("status")]
+    [Authorize(Roles = Roles.Owner)]
+    public async Task<IActionResult> GetStatus([FromQuery] bool refresh = false)
+    {
+        try
+        {
+            return Ok(await _subdomainService.GetStatusAsync(refresh));
+        }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (KeyNotFoundException ex) { return NotFound(new { message = ex.Message }); }
+    }
+
+    /// <summary>
     /// Release the current subdomain.
     /// </summary>
     [HttpDelete("release")]

@@ -12,6 +12,9 @@ public interface IInventoryService
     Task<InventoryItemResponse> AdjustQuantityAsync(Guid id, AdjustQuantityRequest request, string? userName);
     Task<List<InventoryLogResponse>> GetLogsAsync(Guid? itemId = null, int days = 30);
     Task<InventorySummaryResponse> GetSummaryAsync();
+
+    /// <summary>Stock health now plus usage, waste and restocks over the last <paramref name="days"/> local days.</summary>
+    Task<InventoryAnalyticsResponse> GetAnalyticsAsync(int days);
     Task<List<string>> GetCategoriesAsync();
 
     /// <summary>

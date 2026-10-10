@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using menu_backend.Data;
 
@@ -10,9 +11,11 @@ using menu_backend.Data;
 namespace menu_backend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261010110556_AddSubdomainDnsStatus")]
+    partial class AddSubdomainDnsStatus
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1051,23 +1054,6 @@ namespace menu_backend.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
-                    b.Property<string>("CustomDomain")
-                        .HasMaxLength(253)
-                        .HasColumnType("varchar(253)");
-
-                    b.Property<DateTime?>("CustomDomainActiveAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("CustomDomainAddedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("CustomDomainToken")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<DateTime?>("CustomDomainVerifiedAt")
-                        .HasColumnType("datetime(6)");
-
                     b.Property<bool>("DirectPrint")
                         .HasColumnType("tinyint(1)");
 
@@ -1160,9 +1146,6 @@ namespace menu_backend.Migrations
                         .HasColumnType("varchar(500)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CustomDomain")
-                        .IsUnique();
 
                     b.HasIndex("TenantId")
                         .IsUnique();
