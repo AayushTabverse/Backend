@@ -16,19 +16,22 @@ public class OrderService : IOrderService
     private readonly IHubContext<OrderHub> _hub;
     private readonly IPrintService _printService;
     private readonly IInventoryService _inventoryService;
+    private readonly IWaitlistService _waitlistService;
 
     public OrderService(
         AppDbContext db,
         ITenantProvider tenantProvider,
         IHubContext<OrderHub> hub,
         IPrintService printService,
-        IInventoryService inventoryService)
+        IInventoryService inventoryService,
+        IWaitlistService waitlistService)
     {
         _db = db;
         _tenantProvider = tenantProvider;
         _hub = hub;
         _printService = printService;
         _inventoryService = inventoryService;
+        _waitlistService = waitlistService;
     }
 
     public async Task<OrderResponse> CreateOrderAsync(CreateOrderRequest request, string tenantId, string? customerSessionId = null)
@@ -37,6 +40,15 @@ public class OrderService : IOrderService
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(t => t.Id == request.TableId && t.TenantId == tenantId && !t.IsDeleted)
             ?? throw new KeyNotFoundException("Table not found.");
+
+        // A merged table's orders go on its main table's bill
+        if (table.MergedIntoTableId != null)
+        {
+            table = await _db.Tables
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(t => t.Id == table.MergedIntoTableId && t.TenantId == tenantId && !t.IsDeleted)
+                ?? table;
+        }
 
         // Generate order number: ORD-YYYYMMDD-XXXX (restaurant-local day)
         var localToday = BusinessClock.Today;
@@ -51,7 +63,7 @@ public class OrderService : IOrderService
         {
             TenantId = tenantId,
             OrderNumber = orderNumber,
-            TableId = request.TableId,
+            TableId = table.Id,
             Status = OrderStatus.Pending,
             SpecialInstructions = request.SpecialInstructions,
             CustomerSessionId = customerSessionId
@@ -213,14 +225,13 @@ public class OrderService : IOrderService
 
     public async Task<List<OrderResponse>> GetOrdersByTableAsync(Guid tableId, string? customerSessionId = null)
     {
-        var query = GetFullOrderQuery()
-            .Where(o => o.TableId == tableId);
+        var mainTableId = await ResolveMainTableIdAsync(tableId);
 
-        // If a customer session is provided, only return orders from that session
-        if (!string.IsNullOrEmpty(customerSessionId))
-        {
-            query = query.Where(o => o.CustomerSessionId == customerSessionId);
-        }
+        // With a customer session, return that session's orders even if staff merged or
+        // transferred the table since they ordered
+        var query = string.IsNullOrEmpty(customerSessionId)
+            ? GetFullOrderQuery().Where(o => o.TableId == mainTableId)
+            : GetFullOrderQuery().Where(o => o.CustomerSessionId == customerSessionId);
 
         var orders = await query
             .OrderByDescending(o => o.CreatedAt)
@@ -295,8 +306,9 @@ public class OrderService : IOrderService
 
     public async Task<TableSessionSummary> GetTableSessionAsync(Guid tableId)
     {
-        var table = await _db.Tables.FindAsync(tableId)
+        var table = await _db.Tables.FindAsync(await ResolveMainTableIdAsync(tableId))
             ?? throw new KeyNotFoundException("Table not found.");
+        tableId = table.Id;
 
         var orders = await GetFullOrderQuery()
             .Where(o => o.TableId == tableId && ActiveStatuses.Contains(o.Status))
@@ -319,8 +331,20 @@ public class OrderService : IOrderService
         };
     }
 
+    /// <summary>A table merged into another resolves to its main table (which holds the bill).</summary>
+    private async Task<Guid> ResolveMainTableIdAsync(Guid tableId)
+    {
+        var mainId = await _db.Tables
+            .IgnoreQueryFilters()
+            .Where(t => t.Id == tableId && !t.IsDeleted)
+            .Select(t => t.MergedIntoTableId)
+            .FirstOrDefaultAsync();
+        return mainId ?? tableId;
+    }
+
     public async Task<TableSessionSummary> ClearTableAsync(Guid tableId, ClearTableRequest request)
     {
+        tableId = await ResolveMainTableIdAsync(tableId);
         var table = await _db.Tables.FindAsync(tableId)
             ?? throw new KeyNotFoundException("Table not found.");
 
@@ -423,6 +447,16 @@ public class OrderService : IOrderService
         // Notify via SignalR
         await _hub.Clients.Group(table.TenantId)
             .SendAsync("TableCleared", tableId.ToString(), table.TableNumber);
+
+        // Free the waitlist party seated here, and un-merge tables merged into this one
+        await _waitlistService.ReleaseTableAsync(tableId);
+        var merged = await _db.Tables.Where(t => t.MergedIntoTableId == tableId).ToListAsync();
+        if (merged.Count > 0)
+        {
+            foreach (var t in merged) t.MergedIntoTableId = null;
+            await _db.SaveChangesAsync();
+            await _hub.Clients.Group(table.TenantId).SendAsync("TablesChanged");
+        }
 
         return new TableSessionSummary
         {

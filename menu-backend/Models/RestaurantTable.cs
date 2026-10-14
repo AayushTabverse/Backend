@@ -30,6 +30,12 @@ public class RestaurantTable : BaseEntity
     public bool IsCallingWaiter { get; set; } = false;
     public DateTime? WaiterCalledAt { get; set; }
 
+    /// <summary>
+    /// Set while this table is merged into another (the main table). Orders from either
+    /// table's QR go on the main table's bill. Cleared when the main table is billed.
+    /// </summary>
+    public Guid? MergedIntoTableId { get; set; }
+
     // Navigation
     public Tenant? Tenant { get; set; }
     public ICollection<Order> Orders { get; set; } = new List<Order>();

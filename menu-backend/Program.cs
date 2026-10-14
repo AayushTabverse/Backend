@@ -70,6 +70,9 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IMenuService, MenuService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<ITableService, TableService>();
+builder.Services.AddScoped<IWaitlistService, WaitlistService>();
+builder.Services.AddScoped<IReservationService, ReservationService>();
+builder.Services.AddHostedService<WaitlistNoShowWorker>();
 builder.Services.AddScoped<IPrintService, PrintService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
@@ -121,6 +124,8 @@ builder.Services.AddCors(options =>
 {
     // Public website reads (restaurant sites on their own domains call these). Read-only, no cookies.
     options.AddPolicy("PublicSite", policy => policy.AllowAnyOrigin().AllowAnyHeader().WithMethods("GET"));
+    // Public forms on restaurant sites (e.g. table booking): anonymous, no cookies, rate-limited per endpoint
+    options.AddPolicy("PublicForms", policy => policy.AllowAnyOrigin().AllowAnyHeader().WithMethods("GET", "POST"));
 
     options.AddPolicy("AllowFrontend", policy =>
     {

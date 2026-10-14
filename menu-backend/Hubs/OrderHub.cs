@@ -47,6 +47,30 @@ public class OrderHub : Hub
         await Groups.AddToGroupAsync(Context.ConnectionId, $"table-{tableId}");
     }
 
+    /// <summary>
+    /// Waitlisted customer follows their own entry (status page) for "your table is ready".
+    /// </summary>
+    public async Task JoinWaitlistEntry(string entryId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"waitlist-{entryId}");
+    }
+
+    /// <summary>
+    /// Waitlisted customer follows the restaurant's queue so their position stays current.
+    /// </summary>
+    public async Task JoinWaitlistQueue(string tenantId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"waitlist-queue-{tenantId}");
+    }
+
+    /// <summary>
+    /// Customer follows their table booking (accepted / declined).
+    /// </summary>
+    public async Task JoinReservation(string reservationId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"reservation-{reservationId}");
+    }
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         await base.OnDisconnectedAsync(exception);

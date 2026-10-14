@@ -22,6 +22,12 @@ public static class Roles
     /// <summary>Kitchen display.</summary>
     public const string KitchenDisplay = Management + ",Kitchen";
 
+    /// <summary>Walk-in waitlist. Admins only for now; widen to FloorStaff to let captains run it.</summary>
+    public const string Waitlist = Management;
+
+    /// <summary>Table reservations: owner and manager.</summary>
+    public const string Reservations = Management;
+
     /// <summary>Any logged-in restaurant staff.</summary>
     public const string AllStaff = FloorStaff + ",Kitchen";
 

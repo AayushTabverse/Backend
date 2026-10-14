@@ -16,6 +16,8 @@ public class BusinessSettingsResponse
     public string? GoogleMapsUrl { get; set; }
     public string? CurrencyCode { get; set; }
     public string? UpiQrCodeUrl { get; set; }
+    public string? UpiId { get; set; }
+    public string? UpiPayeeName { get; set; }
     public string? PrinterWidth { get; set; }
     public bool DirectPrint { get; set; }
     public decimal CgstPercent { get; set; }
@@ -59,6 +61,14 @@ public class UpdateBusinessSettingsRequest
 
     [MaxLength(1000)]
     public string? UpiQrCodeUrl { get; set; }
+
+    /// <summary>UPI ID (VPA). Empty string clears it.</summary>
+    [MaxLength(100)]
+    [RegularExpression(@"^$|^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z][a-zA-Z0-9.\-]{1,63}$", ErrorMessage = "Enter a valid UPI ID, like yourshop@okicici.")]
+    public string? UpiId { get; set; }
+
+    [MaxLength(100)]
+    public string? UpiPayeeName { get; set; }
 
     [MaxLength(20)]
     public string? PrinterWidth { get; set; }

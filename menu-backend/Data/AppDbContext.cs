@@ -38,6 +38,10 @@ public class AppDbContext : DbContext
     public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
     public DbSet<StaffAttendance> StaffAttendances => Set<StaffAttendance>();
     public DbSet<StaffPayment> StaffPayments => Set<StaffPayment>();
+    public DbSet<WaitlistEntry> WaitlistEntries => Set<WaitlistEntry>();
+    public DbSet<WaitlistEntryTable> WaitlistEntryTables => Set<WaitlistEntryTable>();
+    public DbSet<Reservation> Reservations => Set<Reservation>();
+    public DbSet<ReservationTable> ReservationTables => Set<ReservationTable>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -65,6 +69,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<MenuItemIngredient>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<StaffAttendance>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<StaffPayment>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<WaitlistEntry>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<WaitlistEntryTable>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<Reservation>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<ReservationTable>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
 
         // ── TenantSubscription (not a BaseEntity, separate filter) ──
         modelBuilder.Entity<TenantSubscription>().HasQueryFilter(s => _tenantId == null || s.TenantId == _tenantId);
@@ -91,6 +99,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<RestaurantTable>(entity =>
         {
             entity.HasIndex(e => new { e.TenantId, e.TableNumber }).IsUnique();
+            entity.HasOne<RestaurantTable>()
+                  .WithMany()
+                  .HasForeignKey(e => e.MergedIntoTableId)
+                  .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Tenant)
                   .WithMany(t => t.Tables)
                   .HasForeignKey(e => e.TenantId)
@@ -266,6 +278,46 @@ public class AppDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── WaitlistEntry ──
+        modelBuilder.Entity<WaitlistEntry>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.Status, e.CreatedAt });
+        });
+
+        // ── WaitlistEntryTable ──
+        modelBuilder.Entity<WaitlistEntryTable>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.TableId });
+            entity.HasOne(e => e.WaitlistEntry)
+                  .WithMany(w => w.Tables)
+                  .HasForeignKey(e => e.WaitlistEntryId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Table)
+                  .WithMany()
+                  .HasForeignKey(e => e.TableId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── Reservation ──
+        modelBuilder.Entity<Reservation>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.Status, e.ReservedFor });
+        });
+
+        // ── ReservationTable ──
+        modelBuilder.Entity<ReservationTable>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.TableId });
+            entity.HasOne(e => e.Reservation)
+                  .WithMany(r => r.Tables)
+                  .HasForeignKey(e => e.ReservationId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Table)
+                  .WithMany()
+                  .HasForeignKey(e => e.TableId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── TenantSubscription ──

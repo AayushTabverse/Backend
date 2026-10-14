@@ -47,6 +47,14 @@ public class Tenant
     [MaxLength(1000)]
     public string? UpiQrCodeUrl { get; set; }
 
+    /// <summary>UPI ID (VPA, e.g. shop@okicici). When set, bills get a QR with the bill amount filled in.</summary>
+    [MaxLength(100)]
+    public string? UpiId { get; set; }
+
+    /// <summary>Name shown in the customer's UPI app. Defaults to the restaurant name.</summary>
+    [MaxLength(100)]
+    public string? UpiPayeeName { get; set; }
+
     [MaxLength(20)]
     public string? PrinterWidth { get; set; } = "standard";
 
@@ -61,6 +69,18 @@ public class Tenant
     public decimal MaxDiscountPercent { get; set; } = 0m;
 
     public bool SpinWheelEnabled { get; set; } = false;
+
+    /// <summary>Let walk-ins add themselves to the waitlist by scanning the entrance QR.</summary>
+    public bool WaitlistSelfCheckInEnabled { get; set; } = false;
+
+    /// <summary>Called parties who don't arrive within this many minutes become no-shows. 0 = off.</summary>
+    public int WaitlistNoShowMinutes { get; set; } = 15;
+
+    /// <summary>Accept table reservation requests from the restaurant website.</summary>
+    public bool OnlineReservationsEnabled { get; set; } = false;
+
+    /// <summary>Confirmed reservations not seated this many minutes after their time become no-shows. 0 = off.</summary>
+    public int ReservationGraceMinutes { get; set; } = 30;
 
 
     [MaxLength(100)]

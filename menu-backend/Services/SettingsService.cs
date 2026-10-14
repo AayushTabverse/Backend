@@ -1,3 +1,4 @@
+using menu_backend.Helpers;
 using menu_backend.Data;
 using menu_backend.DTOs.Settings;
 using menu_backend.Services.Interfaces;
@@ -51,6 +52,8 @@ public class SettingsService : ISettingsService
         if (request.WebsiteUrl != null) tenant.WebsiteUrl = request.WebsiteUrl;
         if (request.GoogleMapsUrl != null) tenant.GoogleMapsUrl = request.GoogleMapsUrl;
         if (request.UpiQrCodeUrl != null) tenant.UpiQrCodeUrl = request.UpiQrCodeUrl;
+        if (request.UpiId != null) tenant.UpiId = string.IsNullOrWhiteSpace(request.UpiId) ? null : request.UpiId.Trim();
+        if (request.UpiPayeeName != null) tenant.UpiPayeeName = string.IsNullOrWhiteSpace(request.UpiPayeeName) ? null : request.UpiPayeeName.Trim();
         if (request.PrinterWidth != null) tenant.PrinterWidth = request.PrinterWidth;
         if (request.DirectPrint != null) tenant.DirectPrint = request.DirectPrint.Value;
         if (request.CgstPercent != null) tenant.CgstPercent = request.CgstPercent.Value;
@@ -63,6 +66,24 @@ public class SettingsService : ISettingsService
         await _db.SaveChangesAsync();
 
         return MapSettings(tenant);
+    }
+
+    public async Task<byte[]> GenerateUpiQrAsync(decimal? amount, string? note)
+    {
+        var tenantId = _tenantProvider.TenantId
+            ?? throw new UnauthorizedAccessException("No tenant context.");
+
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.TenantId == tenantId)
+            ?? throw new KeyNotFoundException("Tenant not found.");
+        if (string.IsNullOrWhiteSpace(tenant.UpiId))
+            throw new InvalidOperationException("Add your UPI ID in Settings to print payment QRs with the bill amount.");
+
+        var link = UpiLink.Build(tenant.UpiId, tenant.UpiPayeeName ?? tenant.Name, amount, note);
+
+        using var generator = new QRCoder.QRCodeGenerator();
+        using var data = generator.CreateQrCode(link, QRCoder.QRCodeGenerator.ECCLevel.M);
+        using var qr = new QRCoder.PngByteQRCode(data);
+        return qr.GetGraphic(10);
     }
 
     private static BusinessSettingsResponse MapSettings(Models.Tenant tenant) => new()
@@ -79,6 +100,8 @@ public class SettingsService : ISettingsService
         GoogleMapsUrl = tenant.GoogleMapsUrl,
         CurrencyCode = tenant.CurrencyCode,
         UpiQrCodeUrl = tenant.UpiQrCodeUrl,
+        UpiId = tenant.UpiId,
+        UpiPayeeName = tenant.UpiPayeeName,
         PrinterWidth = tenant.PrinterWidth,
         DirectPrint = tenant.DirectPrint,
         CgstPercent = tenant.CgstPercent,

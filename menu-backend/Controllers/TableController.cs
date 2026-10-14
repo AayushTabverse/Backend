@@ -177,4 +177,59 @@ public class TableController : ControllerBase
         var result = await _tableService.GetAllAssignmentsAsync();
         return Ok(ApiResponse<List<WaiterAssignmentResponse>>.Ok(result));
     }
+
+    /// <summary>
+    /// Merge tables into this one (party needs more seats). Running orders on them move to this table's bill.
+    /// </summary>
+    [HttpPost("{id}/merge")]
+    [Authorize(Roles = Roles.FloorStaff)]
+    public Task<IActionResult> MergeTables(Guid id, [FromBody] MergeTablesRequest request) =>
+        RunTableAction(() => _tableService.MergeTablesAsync(id, request.TableIds), "Tables merged.");
+
+    /// <summary>
+    /// Un-merge: on a merged table, detach it; on a main table, detach all its merged tables.
+    /// </summary>
+    [HttpPost("{id}/unmerge")]
+    [Authorize(Roles = Roles.FloorStaff)]
+    public async Task<IActionResult> Unmerge(Guid id)
+    {
+        try
+        {
+            await _tableService.UnmergeAsync(id);
+            return Ok(ApiResponse.Ok("Tables un-merged."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Move a party to another table: running orders, seated waitlist hold and merged tables.
+    /// </summary>
+    [HttpPost("{id}/transfer")]
+    [Authorize(Roles = Roles.FloorStaff)]
+    public Task<IActionResult> Transfer(Guid id, [FromBody] TransferTableRequest request) =>
+        RunTableAction(() => _tableService.TransferAsync(id, request.ToTableId), "Table transferred.");
+
+    private async Task<IActionResult> RunTableAction(Func<Task<TableResponse>> action, string message)
+    {
+        try
+        {
+            var result = await action();
+            return Ok(ApiResponse<TableResponse>.Ok(result, message));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+    }
 }

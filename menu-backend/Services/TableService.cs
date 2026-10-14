@@ -11,6 +11,15 @@ namespace menu_backend.Services;
 
 public class TableService : ITableService
 {
+    /// <summary>A reserved table shows as reserved this long before the booking.</summary>
+    private const int ReservationHoldMinutes = 60;
+
+    private static readonly OrderStatus[] ActiveOrderStatuses =
+    {
+        OrderStatus.Pending, OrderStatus.Accepted,
+        OrderStatus.Preparing, OrderStatus.Ready, OrderStatus.Served
+    };
+
     private readonly AppDbContext _db;
     private readonly ITenantProvider _tenantProvider;
     private readonly IConfiguration _config;
@@ -90,6 +99,87 @@ public class TableService : ITableService
             table.AssignedWaiterNames = tableAssignments.Select(a => a.Waiter?.FullName ?? "").ToList();
         }
 
+        // Tables held by seated waitlist / reservation parties
+        var held = await _db.WaitlistEntryTables
+            .Where(x => x.WaitlistEntry!.Status == WaitlistStatus.Seated)
+            .Select(x => new
+            {
+                x.TableId,
+                x.IsPrimary,
+                x.WaitlistEntryId,
+                x.WaitlistEntry!.CustomerName,
+                x.WaitlistEntry.CustomerMobile,
+                x.WaitlistEntry.PartySize
+            })
+            .ToListAsync();
+
+        var mergedInto = await _db.Tables
+            .Where(t => t.MergedIntoTableId != null)
+            .Select(t => new { t.Id, MainId = t.MergedIntoTableId!.Value })
+            .ToListAsync();
+
+        // Confirmed bookings starting within the hour, or late but still within the grace period
+        var now = DateTime.UtcNow;
+        var graceMinutes = await _db.Tenants
+            .Where(t => t.TenantId == _tenantProvider.TenantId)
+            .Select(t => t.ReservationGraceMinutes)
+            .FirstOrDefaultAsync();
+        var upcoming = await _db.ReservationTables
+            .Where(x => x.Reservation!.Status == ReservationStatus.Confirmed
+                     && x.Reservation.ReservedFor <= now.AddMinutes(ReservationHoldMinutes)
+                     && x.Reservation.ReservedFor >= now.AddMinutes(-Math.Max(graceMinutes, 30)))
+            .Select(x => new
+            {
+                x.TableId,
+                x.ReservationId,
+                x.Reservation!.CustomerName,
+                x.Reservation.PartySize,
+                x.Reservation.ReservedFor
+            })
+            .ToListAsync();
+
+        var byId = tables.ToDictionary(t => t.Id);
+        foreach (var table in tables)
+        {
+            table.CombinedCapacity = table.Capacity;
+
+            var merge = mergedInto.FirstOrDefault(m => m.Id == table.Id);
+            if (merge != null && byId.TryGetValue(merge.MainId, out var main))
+            {
+                table.MergedIntoTableId = main.Id;
+                table.MergedIntoTableNumber = main.TableNumber;
+            }
+
+            var children = mergedInto.Where(m => m.MainId == table.Id && byId.ContainsKey(m.Id)).ToList();
+            if (children.Count > 0)
+            {
+                table.MergedTableNumbers = children.Select(c => byId[c.Id].TableNumber).ToList();
+                table.CombinedCapacity += children.Sum(c => byId[c.Id].Capacity);
+            }
+
+            var booking = upcoming.Where(u => u.TableId == table.Id).OrderBy(u => u.ReservedFor).FirstOrDefault();
+            if (booking != null)
+            {
+                table.ReservationId = booking.ReservationId;
+                table.ReservationCustomerName = booking.CustomerName;
+                table.ReservationPartySize = booking.PartySize;
+                table.ReservationTime = booking.ReservedFor;
+            }
+
+            var hold = held.FirstOrDefault(h => h.TableId == table.Id);
+            if (hold == null) continue;
+
+            table.WaitlistEntryId = hold.WaitlistEntryId;
+            table.WaitlistCustomerName = hold.CustomerName;
+            table.WaitlistCustomerMobile = hold.CustomerMobile;
+            table.WaitlistPartySize = hold.PartySize;
+            table.IsPrimaryWaitlistTable = hold.IsPrimary;
+            table.MergedWithTableNumbers = held
+                .Where(h => h.WaitlistEntryId == hold.WaitlistEntryId && h.TableId != table.Id)
+                .Select(h => byId.TryGetValue(h.TableId, out var t) ? t.TableNumber : "")
+                .ToList();
+        }
+
         return tables;
     }
 
@@ -143,6 +233,168 @@ public class TableService : ITableService
         await _db.SaveChangesAsync();
         return qrBytes;
     }
+
+    // ── Merge & transfer ──
+
+    public async Task<TableResponse> MergeTablesAsync(Guid mainTableId, List<Guid> tableIds)
+    {
+        var ids = tableIds.Distinct().Where(id => id != mainTableId).ToList();
+        if (ids.Count == 0)
+            throw new InvalidOperationException("Select at least one table to merge.");
+
+        // A restaurant has few tables; load them all (the MySQL provider can't translate Guid-list Contains)
+        var all = await _db.Tables.ToListAsync();
+        var main = all.FirstOrDefault(t => t.Id == mainTableId)
+            ?? throw new KeyNotFoundException("Table not found.");
+        if (!main.IsActive)
+            throw new InvalidOperationException($"Table {main.TableNumber} is inactive.");
+        if (main.MergedIntoTableId != null)
+        {
+            var mainOf = all.FirstOrDefault(t => t.Id == main.MergedIntoTableId);
+            throw new InvalidOperationException(
+                $"Table {main.TableNumber} is already merged into {mainOf?.TableNumber}. Merge into {mainOf?.TableNumber} instead.");
+        }
+
+        var toMerge = all.Where(t => ids.Contains(t.Id)).ToList();
+        if (toMerge.Count != ids.Count)
+            throw new KeyNotFoundException("One or more tables were not found.");
+
+        var heldBy = await HeldTablesAsync();
+        heldBy.TryGetValue(main.Id, out var mainParty);
+
+        foreach (var t in toMerge)
+        {
+            if (!t.IsActive)
+                throw new InvalidOperationException($"Table {t.TableNumber} is inactive.");
+            if (t.MergedIntoTableId != null && t.MergedIntoTableId != main.Id)
+                throw new InvalidOperationException($"Table {t.TableNumber} is merged with another table. Un-merge it first.");
+            if (all.Any(c => c.MergedIntoTableId == t.Id))
+                throw new InvalidOperationException($"Table {t.TableNumber} has its own merged tables. Un-merge them first.");
+            if (heldBy.TryGetValue(t.Id, out var party) && party != mainParty)
+                throw new InvalidOperationException($"Table {t.TableNumber} is held for another party.");
+        }
+
+        // Running orders on the merged tables move to the main table's bill
+        var mergeIds = toMerge.Select(t => t.Id).ToList();
+        var orders = (await _db.Orders.Where(o => ActiveOrderStatuses.Contains(o.Status)).ToListAsync())
+            .Where(o => mergeIds.Contains(o.TableId))
+            .ToList();
+        foreach (var order in orders)
+            order.TableId = main.Id;
+
+        foreach (var t in toMerge)
+        {
+            t.MergedIntoTableId = main.Id;
+            t.IsCallingWaiter = false;
+            t.WaiterCalledAt = null;
+        }
+
+        await _db.SaveChangesAsync();
+        await BroadcastTablesChangedAsync(main.TenantId);
+
+        return (await GetTablesAsync()).First(t => t.Id == main.Id);
+    }
+
+    public async Task UnmergeAsync(Guid tableId)
+    {
+        var all = await _db.Tables.ToListAsync();
+        var table = all.FirstOrDefault(t => t.Id == tableId)
+            ?? throw new KeyNotFoundException("Table not found.");
+
+        var detach = table.MergedIntoTableId != null
+            ? new List<RestaurantTable> { table }
+            : all.Where(t => t.MergedIntoTableId == table.Id).ToList();
+        if (detach.Count == 0)
+            throw new InvalidOperationException($"Table {table.TableNumber} isn't merged.");
+
+        foreach (var t in detach)
+            t.MergedIntoTableId = null;
+
+        // A detached table no longer belongs to the seated party's hold
+        var detachIds = detach.Select(t => t.Id).ToList();
+        var links = (await _db.WaitlistEntryTables
+                .Where(x => x.WaitlistEntry!.Status == WaitlistStatus.Seated && !x.IsPrimary)
+                .ToListAsync())
+            .Where(x => detachIds.Contains(x.TableId));
+        foreach (var link in links)
+            link.IsDeleted = true;
+
+        await _db.SaveChangesAsync();
+        await BroadcastTablesChangedAsync(table.TenantId);
+    }
+
+    public async Task<TableResponse> TransferAsync(Guid fromTableId, Guid toTableId)
+    {
+        if (fromTableId == toTableId)
+            throw new InvalidOperationException("Pick a different table.");
+
+        var all = await _db.Tables.ToListAsync();
+        var from = all.FirstOrDefault(t => t.Id == fromTableId)
+            ?? throw new KeyNotFoundException("Table not found.");
+        var to = all.FirstOrDefault(t => t.Id == toTableId)
+            ?? throw new KeyNotFoundException("Table not found.");
+
+        if (from.MergedIntoTableId != null)
+        {
+            var mainOf = all.FirstOrDefault(t => t.Id == from.MergedIntoTableId);
+            throw new InvalidOperationException(
+                $"Table {from.TableNumber} is merged into {mainOf?.TableNumber}. Transfer {mainOf?.TableNumber} instead.");
+        }
+
+        if (!to.IsActive)
+            throw new InvalidOperationException($"Table {to.TableNumber} is inactive.");
+        if (to.MergedIntoTableId != null || all.Any(t => t.MergedIntoTableId == to.Id))
+            throw new InvalidOperationException($"Table {to.TableNumber} is part of a merge. Pick a free table.");
+
+        var activeOrders = await _db.Orders.Where(o => ActiveOrderStatuses.Contains(o.Status)).ToListAsync();
+        if (activeOrders.Any(o => o.TableId == to.Id))
+            throw new InvalidOperationException($"Table {to.TableNumber} is occupied. Use merge to combine two running tables.");
+
+        var heldBy = await HeldTablesAsync();
+        if (heldBy.ContainsKey(to.Id))
+            throw new InvalidOperationException($"Table {to.TableNumber} is held for another party.");
+
+        var ordersToMove = activeOrders.Where(o => o.TableId == from.Id).ToList();
+        var holdLinks = (await _db.WaitlistEntryTables
+                .Where(x => x.WaitlistEntry!.Status == WaitlistStatus.Seated)
+                .ToListAsync())
+            .Where(x => x.TableId == from.Id)
+            .ToList();
+        var children = all.Where(t => t.MergedIntoTableId == from.Id).ToList();
+
+        if (ordersToMove.Count == 0 && holdLinks.Count == 0 && children.Count == 0)
+            throw new InvalidOperationException($"Table {from.TableNumber} has nothing to transfer.");
+
+        foreach (var order in ordersToMove) order.TableId = to.Id;
+        foreach (var link in holdLinks) link.TableId = to.Id;
+        foreach (var child in children) child.MergedIntoTableId = to.Id;
+
+        if (from.IsCallingWaiter)
+        {
+            to.IsCallingWaiter = true;
+            to.WaiterCalledAt = from.WaiterCalledAt;
+            from.IsCallingWaiter = false;
+            from.WaiterCalledAt = null;
+        }
+
+        await _db.SaveChangesAsync();
+        await BroadcastTablesChangedAsync(from.TenantId);
+
+        return (await GetTablesAsync()).First(t => t.Id == to.Id);
+    }
+
+    /// <summary>Table id → waitlist entry holding it (seated parties).</summary>
+    private async Task<Dictionary<Guid, Guid>> HeldTablesAsync() =>
+        (await _db.WaitlistEntryTables
+            .Where(x => x.WaitlistEntry!.Status == WaitlistStatus.Seated)
+            .Select(x => new { x.TableId, x.WaitlistEntryId })
+            .ToListAsync())
+        .GroupBy(x => x.TableId)
+        .ToDictionary(g => g.Key, g => g.First().WaitlistEntryId);
+
+    /// <summary>Waiter/admin screens and the kitchen (table numbers on tickets) refresh on this.</summary>
+    private Task BroadcastTablesChangedAsync(string tenantId) =>
+        _hub.Clients.Group(tenantId).SendAsync("TablesChanged");
 
     private static TableResponse MapTable(RestaurantTable table) => new()
     {

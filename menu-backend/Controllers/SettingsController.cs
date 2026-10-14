@@ -37,6 +37,26 @@ public class SettingsController : ControllerBase
     }
 
     /// <summary>
+    /// UPI payment QR for a bill: scanning it opens the customer's UPI app with the amount filled in.
+    /// </summary>
+    [HttpGet("upi-qr")]
+    [Authorize(Roles = Roles.FloorStaff)]
+    public async Task<IActionResult> GetUpiQr([FromQuery] decimal? amount, [FromQuery] string? note)
+    {
+        if (amount is < 0 or > 1_000_000)
+            return BadRequest(ApiResponse.Fail("Invalid amount."));
+        try
+        {
+            var png = await _settingsService.GenerateUpiQrAsync(amount, note);
+            return File(png, "image/png");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>
     /// Get business settings by tenantId (public — for customer menu).
     /// </summary>
     [HttpGet("public/{tenantId}")]

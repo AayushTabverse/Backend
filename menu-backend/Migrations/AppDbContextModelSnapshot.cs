@@ -813,6 +813,121 @@ namespace menu_backend.Migrations
                     b.ToTable("PrintJobs");
                 });
 
+            modelBuilder.Entity("menu_backend.Models.Reservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CustomerEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("CustomerMobile")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("CustomerName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<int>("PartySize")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ReservedFor")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ResponseMessage")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<DateTime?>("SeatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("WaitlistEntryId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Status", "ReservedFor");
+
+                    b.ToTable("Reservations");
+                });
+
+            modelBuilder.Entity("menu_backend.Models.ReservationTable", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<Guid>("ReservationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("TableId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReservationId");
+
+                    b.HasIndex("TableId");
+
+                    b.HasIndex("TenantId", "TableId");
+
+                    b.ToTable("ReservationTables");
+                });
+
             modelBuilder.Entity("menu_backend.Models.RestaurantTable", b =>
                 {
                     b.Property<Guid>("Id")
@@ -837,6 +952,9 @@ namespace menu_backend.Migrations
                     b.Property<string>("Label")
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
+
+                    b.Property<Guid?>("MergedIntoTableId")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("QrCodeUrl")
                         .HasMaxLength(500)
@@ -864,6 +982,8 @@ namespace menu_backend.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("MergedIntoTableId");
 
                     b.HasIndex("TenantId", "TableNumber")
                         .IsUnique();
@@ -1102,6 +1222,9 @@ namespace menu_backend.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<bool>("OnlineReservationsEnabled")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("Phone")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
@@ -1109,6 +1232,9 @@ namespace menu_backend.Migrations
                     b.Property<string>("PrinterWidth")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<int>("ReservationGraceMinutes")
+                        .HasColumnType("int");
 
                     b.Property<decimal>("ServiceChargePercent")
                         .HasColumnType("decimal(18,2)");
@@ -1151,9 +1277,23 @@ namespace menu_backend.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("UpiId")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("UpiPayeeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
                     b.Property<string>("UpiQrCodeUrl")
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
+
+                    b.Property<int>("WaitlistNoShowMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("WaitlistSelfCheckInEnabled")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("WebsiteUrl")
                         .HasMaxLength(500)
@@ -1295,6 +1435,112 @@ namespace menu_backend.Migrations
                         .IsUnique();
 
                     b.ToTable("WaiterTableAssignments");
+                });
+
+            modelBuilder.Entity("menu_backend.Models.WaitlistEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CustomerMobile")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("CustomerName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<DateTime?>("NotifiedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("PartySize")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("QuotedWaitMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("SeatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int>("TokenNumber")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Status", "CreatedAt");
+
+                    b.ToTable("WaitlistEntries");
+                });
+
+            modelBuilder.Entity("menu_backend.Models.WaitlistEntryTable", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<Guid>("TableId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("WaitlistEntryId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TableId");
+
+                    b.HasIndex("WaitlistEntryId");
+
+                    b.HasIndex("TenantId", "TableId");
+
+                    b.ToTable("WaitlistEntryTables");
                 });
 
             modelBuilder.Entity("menu_backend.Models.WebsiteContent", b =>
@@ -1561,8 +1807,32 @@ namespace menu_backend.Migrations
                     b.Navigation("Order");
                 });
 
+            modelBuilder.Entity("menu_backend.Models.ReservationTable", b =>
+                {
+                    b.HasOne("menu_backend.Models.Reservation", "Reservation")
+                        .WithMany("Tables")
+                        .HasForeignKey("ReservationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("menu_backend.Models.RestaurantTable", "Table")
+                        .WithMany()
+                        .HasForeignKey("TableId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Reservation");
+
+                    b.Navigation("Table");
+                });
+
             modelBuilder.Entity("menu_backend.Models.RestaurantTable", b =>
                 {
+                    b.HasOne("menu_backend.Models.RestaurantTable", null)
+                        .WithMany()
+                        .HasForeignKey("MergedIntoTableId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("menu_backend.Models.Tenant", "Tenant")
                         .WithMany("Tables")
                         .HasForeignKey("TenantId")
@@ -1634,6 +1904,25 @@ namespace menu_backend.Migrations
                     b.Navigation("Waiter");
                 });
 
+            modelBuilder.Entity("menu_backend.Models.WaitlistEntryTable", b =>
+                {
+                    b.HasOne("menu_backend.Models.RestaurantTable", "Table")
+                        .WithMany()
+                        .HasForeignKey("TableId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("menu_backend.Models.WaitlistEntry", "WaitlistEntry")
+                        .WithMany("Tables")
+                        .HasForeignKey("WaitlistEntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Table");
+
+                    b.Navigation("WaitlistEntry");
+                });
+
             modelBuilder.Entity("menu_backend.Models.MenuCategory", b =>
                 {
                     b.Navigation("Items");
@@ -1655,6 +1944,11 @@ namespace menu_backend.Migrations
                     b.Navigation("PrintJobs");
                 });
 
+            modelBuilder.Entity("menu_backend.Models.Reservation", b =>
+                {
+                    b.Navigation("Tables");
+                });
+
             modelBuilder.Entity("menu_backend.Models.RestaurantTable", b =>
                 {
                     b.Navigation("Orders");
@@ -1667,6 +1961,11 @@ namespace menu_backend.Migrations
                     b.Navigation("Tables");
 
                     b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("menu_backend.Models.WaitlistEntry", b =>
+                {
+                    b.Navigation("Tables");
                 });
 #pragma warning restore 612, 618
         }
