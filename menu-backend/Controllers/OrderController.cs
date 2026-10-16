@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using menu_backend.DTOs;
 using menu_backend.Helpers;
 using menu_backend.DTOs.Order;
@@ -195,6 +196,43 @@ public class OrderController : ControllerBase
         if (pageSize > 100) pageSize = 100;
         var result = await _orderService.GetBillsAsync(from, to, page, pageSize);
         return Ok(ApiResponse<PaginatedBillsResponse>.Ok(result));
+    }
+
+    [HttpGet("bills/{billNumber}")]
+    [Authorize(Roles = Roles.Billing)]
+    public async Task<IActionResult> GetBill(string billNumber)
+    {
+        try
+        {
+            var result = await _orderService.GetBillAsync(billNumber);
+            return Ok(ApiResponse<BillResponse>.Ok(result));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Remove items from a printed bill (customer says an item never came). Recorded in the bill's history.
+    /// </summary>
+    [HttpPost("bills/{billNumber}/remove-items")]
+    [Authorize(Roles = Roles.Billing)]
+    public async Task<IActionResult> RemoveBillItems(string billNumber, [FromBody] RemoveBillItemsRequest request)
+    {
+        try
+        {
+            var result = await _orderService.RemoveBillItemsAsync(billNumber, request, User.FindFirstValue(ClaimTypes.Name));
+            return Ok(ApiResponse<RemoveBillItemsResponse>.Ok(result, "Bill updated."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>

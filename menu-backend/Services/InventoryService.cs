@@ -305,6 +305,40 @@ public class InventoryService : IInventoryService
         await _db.SaveChangesAsync();
     }
 
+    public async Task RestoreForItemsAsync(IEnumerable<(Guid MenuItemId, int Quantity)> items, string note, string? changedBy = null)
+    {
+        var restore = new Dictionary<Guid, decimal>();
+        foreach (var (menuItemId, quantity) in items)
+        {
+            var ingredients = await _db.MenuItemIngredients.Where(i => i.MenuItemId == menuItemId).ToListAsync();
+            foreach (var ing in ingredients)
+                restore[ing.InventoryItemId] = restore.GetValueOrDefault(ing.InventoryItemId) + ing.QuantityUsed * quantity;
+        }
+        if (restore.Count == 0) return;
+
+        foreach (var (inventoryItemId, amount) in restore)
+        {
+            var invItem = await _db.InventoryItems.FindAsync(inventoryItemId);
+            if (invItem == null) continue;
+
+            invItem.CurrentQuantity += amount;
+            invItem.UpdatedAt = DateTime.UtcNow;
+
+            // Logged as an adjustment so usage analytics don't count the returned stock as usage
+            _db.InventoryLogs.Add(new Models.InventoryLog
+            {
+                InventoryItemId = inventoryItemId,
+                QuantityChange = amount,
+                QuantityAfter = invItem.CurrentQuantity,
+                ChangeType = "Adjustment",
+                Notes = note,
+                ChangedBy = changedBy ?? "System"
+            });
+        }
+
+        await _db.SaveChangesAsync();
+    }
+
     // ═══════════════════════════════════════════════════
     // Analytics: stock health now + usage, waste and restocks over the last N days
     // ═══════════════════════════════════════════════════

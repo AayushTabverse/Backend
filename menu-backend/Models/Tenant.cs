@@ -76,6 +76,9 @@ public class Tenant
     /// <summary>Called parties who don't arrive within this many minutes become no-shows. 0 = off.</summary>
     public int WaitlistNoShowMinutes { get; set; } = 15;
 
+    /// <summary>Show waiting customers a live board of table numbers and their status (no names).</summary>
+    public bool WaitlistShowTableStatus { get; set; } = false;
+
     /// <summary>Accept table reservation requests from the restaurant website.</summary>
     public bool OnlineReservationsEnabled { get; set; } = false;
 

@@ -17,6 +17,9 @@ public interface IInventoryService
     Task<InventoryAnalyticsResponse> GetAnalyticsAsync(int days);
     Task<List<string>> GetCategoriesAsync();
 
+    /// <summary>Puts back the ingredients of menu items that were removed from a bill (never served).</summary>
+    Task RestoreForItemsAsync(IEnumerable<(Guid MenuItemId, int Quantity)> items, string note, string? changedBy = null);
+
     /// <summary>
     /// Deduct inventory for all items in a completed order based on MenuItemIngredient mappings.
     /// </summary>

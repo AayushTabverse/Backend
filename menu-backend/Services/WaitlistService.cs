@@ -310,6 +310,7 @@ public class WaitlistService : IWaitlistService
 
         if (request.SelfCheckInEnabled.HasValue) tenant.WaitlistSelfCheckInEnabled = request.SelfCheckInEnabled.Value;
         if (request.NoShowMinutes.HasValue) tenant.WaitlistNoShowMinutes = request.NoShowMinutes.Value;
+        if (request.ShowTableStatus.HasValue) tenant.WaitlistShowTableStatus = request.ShowTableStatus.Value;
         tenant.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
@@ -415,8 +416,10 @@ public class WaitlistService : IWaitlistService
             RestaurantName = tenant.Name,
             LogoUrl = tenant.LogoUrl,
             SelfCheckInEnabled = tenant.WaitlistSelfCheckInEnabled,
+            OnlineReservationsEnabled = tenant.OnlineReservationsEnabled,
             PartiesWaiting = waiting,
-            EstimatedWaitMinutes = estimator.ForPosition(waiting + 1)
+            EstimatedWaitMinutes = estimator.ForPosition(waiting + 1),
+            Tables = tenant.WaitlistShowTableStatus ? await BuildTableBoardAsync(tenantId) : null
         };
     }
 
@@ -550,6 +553,9 @@ public class WaitlistService : IWaitlistService
                 .Select(t => t.Table?.TableNumber ?? "").ToList()
         };
 
+        if (tenant.WaitlistShowTableStatus && entry.Status is WaitlistStatus.Waiting or WaitlistStatus.Notified)
+            response.Tables = await BuildTableBoardAsync(entry.TenantId);
+
         if (entry.Status is WaitlistStatus.Waiting or WaitlistStatus.Notified)
         {
             var ahead = await _db.WaitlistEntries.CountAsync(e =>
@@ -602,7 +608,8 @@ public class WaitlistService : IWaitlistService
     private static WaitlistSettingsResponse MapSettings(Tenant tenant) => new()
     {
         SelfCheckInEnabled = tenant.WaitlistSelfCheckInEnabled,
-        NoShowMinutes = tenant.WaitlistNoShowMinutes
+        NoShowMinutes = tenant.WaitlistNoShowMinutes,
+        ShowTableStatus = tenant.WaitlistShowTableStatus
     };
 
     private static string? NormalizeMobile(string? mobile)
@@ -624,17 +631,71 @@ public class WaitlistService : IWaitlistService
         await _hub.Clients.Group($"waitlist-queue-{entry.TenantId}").SendAsync("WaitlistQueueChanged");
     }
 
+    // ── Customer table board ──
+
+    /// <summary>
+    /// Table numbers with Free / Occupied / Reserved, for waiting customers. A merged table shows
+    /// as occupied; a free table with a booking within the hold window shows as reserved.
+    /// </summary>
+    private async Task<List<PublicTableStatus>> BuildTableBoardAsync(string tenantId)
+    {
+        var now = DateTime.UtcNow;
+        var tables = await _db.Tables
+            .IgnoreQueryFilters()
+            .Where(t => t.TenantId == tenantId && !t.IsDeleted && t.IsActive)
+            .Select(t => new
+            {
+                t.Id,
+                t.TableNumber,
+                t.Capacity,
+                Merged = t.MergedIntoTableId != null,
+                Busy = t.Orders.Any(o => !o.IsDeleted && ActiveOrderStatuses.Contains(o.Status))
+            })
+            .ToListAsync();
+        var held = (await _db.WaitlistEntryTables
+                .Where(x => x.TenantId == tenantId && x.WaitlistEntry!.Status == WaitlistStatus.Seated)
+                .Select(x => x.TableId)
+                .ToListAsync())
+            .ToHashSet();
+        var bookings = (await _db.ReservationTables
+                .Where(x => x.TenantId == tenantId
+                         && x.Reservation!.Status == ReservationStatus.Confirmed
+                         && x.Reservation.ReservedFor <= now.AddMinutes(ReservationRules.HoldMinutes)
+                         && x.Reservation.ReservedFor >= now.AddMinutes(-30))
+                .Select(x => new { x.TableId, x.Reservation!.ReservedFor })
+                .ToListAsync())
+            .GroupBy(x => x.TableId)
+            .ToDictionary(g => g.Key, g => g.Min(x => x.ReservedFor));
+
+        return tables
+            .OrderBy(t => t.TableNumber.Length).ThenBy(t => t.TableNumber)
+            .Select(t =>
+            {
+                var occupied = t.Busy || t.Merged || held.Contains(t.Id);
+                var reserved = !occupied && bookings.ContainsKey(t.Id);
+                return new PublicTableStatus
+                {
+                    TableNumber = t.TableNumber,
+                    Capacity = t.Capacity,
+                    Status = occupied ? "Occupied" : reserved ? "Reserved" : "Free",
+                    ReservedAt = reserved ? bookings[t.Id] : null
+                };
+            })
+            .ToList();
+    }
+
     // ── Wait-time estimate ──
 
     /// <summary>
     /// Estimates wait by queue position: parties beyond the number of free tables wait
     /// (position − free tables) × average minutes between seatings, rounded up to 5 minutes.
     /// </summary>
-    private sealed class WaitEstimator(int freeTables, double minutesPerSeating)
+    private sealed class WaitEstimator(int freeTables, int upcomingBookings, double minutesPerSeating)
     {
+        /// <summary>Bookings due within the hold window get tables before walk-ins.</summary>
         public int ForPosition(int position)
         {
-            var ahead = position - freeTables;
+            var ahead = position + upcomingBookings - freeTables;
             if (ahead <= 0) return 0;
             var minutes = ahead * minutesPerSeating;
             return (int)Math.Ceiling(minutes / 5.0) * 5;
@@ -664,7 +725,13 @@ public class WaitlistService : IWaitlistService
             .ToListAsync();
         var free = tables.Count(t => !t.Busy && !heldIds.Contains(t.Id));
 
-        return new WaitEstimator(free, minutesPerSeating);
+        var now = DateTime.UtcNow;
+        var upcoming = await _db.Reservations.CountAsync(r =>
+            r.TenantId == tenantId && r.Status == ReservationStatus.Confirmed
+            && r.ReservedFor <= now.AddMinutes(ReservationRules.HoldMinutes)
+            && r.ReservedFor >= now.AddMinutes(-30));
+
+        return new WaitEstimator(free, upcoming, minutesPerSeating);
     }
 
     /// <summary>

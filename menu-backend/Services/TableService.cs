@@ -1,3 +1,4 @@
+using menu_backend.Helpers;
 using menu_backend.Data;
 using menu_backend.DTOs.Table;
 using menu_backend.Hubs;
@@ -11,8 +12,7 @@ namespace menu_backend.Services;
 
 public class TableService : ITableService
 {
-    /// <summary>A reserved table shows as reserved this long before the booking.</summary>
-    private const int ReservationHoldMinutes = 60;
+    private const int ReservationHoldMinutes = ReservationRules.HoldMinutes;
 
     private static readonly OrderStatus[] ActiveOrderStatuses =
     {

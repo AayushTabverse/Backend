@@ -42,6 +42,7 @@ public class AppDbContext : DbContext
     public DbSet<WaitlistEntryTable> WaitlistEntryTables => Set<WaitlistEntryTable>();
     public DbSet<Reservation> Reservations => Set<Reservation>();
     public DbSet<ReservationTable> ReservationTables => Set<ReservationTable>();
+    public DbSet<BillAdjustment> BillAdjustments => Set<BillAdjustment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -73,6 +74,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<WaitlistEntryTable>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<Reservation>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<ReservationTable>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<BillAdjustment>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
 
         // ── TenantSubscription (not a BaseEntity, separate filter) ──
         modelBuilder.Entity<TenantSubscription>().HasQueryFilter(s => _tenantId == null || s.TenantId == _tenantId);
@@ -318,6 +320,13 @@ public class AppDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.TableId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── BillAdjustment ──
+        modelBuilder.Entity<BillAdjustment>(entity =>
+        {
+            entity.Property(e => e.AmountRemoved).HasColumnType("decimal(10,2)");
+            entity.HasIndex(e => new { e.TenantId, e.BillNumber });
         });
 
         // ── TenantSubscription ──

@@ -211,7 +211,17 @@ public class MenuService : IMenuService
             .FirstOrDefaultAsync(t => t.Id == tableId && !t.IsDeleted)
             ?? throw new KeyNotFoundException("Table not found.");
 
-        return await GetFullMenuAsync(table.TenantId);
+        var menu = await GetFullMenuAsync(table.TenantId);
+        menu.TableNumber = table.TableNumber;
+        if (table.MergedIntoTableId != null)
+        {
+            menu.MergedIntoTableNumber = await _db.Tables
+                .IgnoreQueryFilters()
+                .Where(t => t.Id == table.MergedIntoTableId)
+                .Select(t => t.TableNumber)
+                .FirstOrDefaultAsync();
+        }
+        return menu;
     }
 
     // ── Mappers ──

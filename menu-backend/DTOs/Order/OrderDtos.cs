@@ -148,6 +148,46 @@ public class TableSessionSummary
     public string? CustomerMobile { get; set; }
     public DateTime CompletedAt { get; set; }
     public List<OrderResponse> Orders { get; set; } = new();
+    /// <summary>Changes made after the bill was printed (newest first). Empty if never edited.</summary>
+    public List<BillAdjustmentResponse> Adjustments { get; set; } = new();
+}
+
+public class BillAdjustmentResponse
+{
+    public string ItemName { get; set; } = string.Empty;
+    public int QuantityRemoved { get; set; }
+    public decimal AmountRemoved { get; set; }
+    public string? Reason { get; set; }
+    public string? ChangedBy { get; set; }
+    public DateTime ChangedAt { get; set; }
+}
+
+public class RemoveBillItemsRequest
+{
+    [Required]
+    [MinLength(1)]
+    public List<RemoveBillItemLine> Items { get; set; } = new();
+
+    [MaxLength(200)]
+    public string? Reason { get; set; }
+}
+
+public class RemoveBillItemLine
+{
+    [Required]
+    public Guid OrderItemId { get; set; }
+
+    /// <summary>How many to take off (the whole line when it equals the line's quantity).</summary>
+    [Range(1, 1000)]
+    public int Quantity { get; set; } = 1;
+}
+
+public class RemoveBillItemsResponse
+{
+    public BillResponse Bill { get; set; } = new();
+    public decimal PreviousTotal { get; set; }
+    /// <summary>Money to give back: the customer had already paid more than the new total.</summary>
+    public decimal RefundAmount { get; set; }
 }
 
 public class PaginatedBillsResponse

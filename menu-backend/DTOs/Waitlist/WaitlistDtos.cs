@@ -96,6 +96,7 @@ public class WaitlistSettingsResponse
 {
     public bool SelfCheckInEnabled { get; set; }
     public int NoShowMinutes { get; set; }
+    public bool ShowTableStatus { get; set; }
 }
 
 public class UpdateWaitlistSettingsRequest
@@ -104,6 +105,8 @@ public class UpdateWaitlistSettingsRequest
 
     [Range(0, 120)]
     public int? NoShowMinutes { get; set; }
+
+    public bool? ShowTableStatus { get; set; }
 }
 
 // ── Public (customer-facing) ──
@@ -127,8 +130,23 @@ public class PublicWaitlistInfoResponse
     public string RestaurantName { get; set; } = string.Empty;
     public string? LogoUrl { get; set; }
     public bool SelfCheckInEnabled { get; set; }
+    /// <summary>The entrance QR page can also take bookings for later.</summary>
+    public bool OnlineReservationsEnabled { get; set; }
     public int PartiesWaiting { get; set; }
     public int EstimatedWaitMinutes { get; set; }
+    /// <summary>Live table board, when the restaurant shares it.</summary>
+    public List<PublicTableStatus>? Tables { get; set; }
+}
+
+/// <summary>One table on the customer-facing board. Never includes who is sitting there.</summary>
+public class PublicTableStatus
+{
+    public string TableNumber { get; set; } = string.Empty;
+    public int Capacity { get; set; }
+    /// <summary>Free, Occupied or Reserved.</summary>
+    public string Status { get; set; } = string.Empty;
+    /// <summary>For reserved tables: when the booking starts.</summary>
+    public DateTime? ReservedAt { get; set; }
 }
 
 /// <summary>What a waitlisted customer sees on their status page. No mobile numbers.</summary>
@@ -148,6 +166,8 @@ public class PublicWaitlistStatusResponse
     public DateTime CreatedAt { get; set; }
     public DateTime? NotifiedAt { get; set; }
     public List<string> TableNumbers { get; set; } = new();
+    /// <summary>Live table board, when the restaurant shares it.</summary>
+    public List<PublicTableStatus>? Tables { get; set; }
 }
 
 // ── Analytics ──

@@ -158,6 +158,12 @@ public class FullMenuResponse
     public string? TwitterUrl { get; set; }
     public string? WebsiteUrl { get; set; }
     public string? GoogleMapsUrl { get; set; }
+
+    /// <summary>Set when the menu was opened from a table's QR.</summary>
+    public string? TableNumber { get; set; }
+    /// <summary>Set when that table is merged into another: orders are only taken on the main table.</summary>
+    public string? MergedIntoTableNumber { get; set; }
+
     public List<CategoryResponse> Categories { get; set; } = new();
 }
 

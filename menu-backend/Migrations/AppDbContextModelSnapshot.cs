@@ -19,6 +19,61 @@ namespace menu_backend.Migrations
                 .HasAnnotation("ProductVersion", "10.0.5")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
+            modelBuilder.Entity("menu_backend.Models.BillAdjustment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<decimal>("AmountRemoved")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<string>("BillNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("ChangedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("ItemName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("QuantityRemoved")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "BillNumber");
+
+                    b.ToTable("BillAdjustments");
+                });
+
             modelBuilder.Entity("menu_backend.Models.Customer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1293,6 +1348,9 @@ namespace menu_backend.Migrations
                         .HasColumnType("int");
 
                     b.Property<bool>("WaitlistSelfCheckInEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("WaitlistShowTableStatus")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<string>("WebsiteUrl")

@@ -41,13 +41,17 @@ public class OrderService : IOrderService
             .FirstOrDefaultAsync(t => t.Id == request.TableId && t.TenantId == tenantId && !t.IsDeleted)
             ?? throw new KeyNotFoundException("Table not found.");
 
-        // A merged table's orders go on its main table's bill
+        // Merged tables share the main table's bill: only the main table takes orders
         if (table.MergedIntoTableId != null)
         {
-            table = await _db.Tables
+            var mainNumber = await _db.Tables
                 .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(t => t.Id == table.MergedIntoTableId && t.TenantId == tenantId && !t.IsDeleted)
-                ?? table;
+                .Where(t => t.Id == table.MergedIntoTableId && t.TenantId == tenantId && !t.IsDeleted)
+                .Select(t => t.TableNumber)
+                .FirstOrDefaultAsync();
+            if (mainNumber != null)
+                throw new InvalidOperationException(
+                    $"Table {table.TableNumber} is joined with Table {mainNumber}. Please place your order from Table {mainNumber}.");
         }
 
         // Generate order number: ORD-YYYYMMDD-XXXX (restaurant-local day)
@@ -474,6 +478,182 @@ public class OrderService : IOrderService
         };
     }
 
+    public async Task<BillResponse> GetBillAsync(string billNumber)
+    {
+        var orders = await _db.Orders
+            .Include(o => o.Items)
+            .Include(o => o.Table)
+            .Where(o => o.BillNumber == billNumber && o.Status == OrderStatus.Completed)
+            .OrderBy(o => o.CreatedAt)
+            .ToListAsync();
+        if (orders.Count == 0)
+            throw new KeyNotFoundException("Bill not found.");
+
+        var due = await _db.CustomerDues.FirstOrDefaultAsync(d => d.BillNumber == billNumber);
+        var adjustments = await _db.BillAdjustments
+            .Where(a => a.BillNumber == billNumber)
+            .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync();
+        var table = orders[0].Table;
+        var total = orders.Sum(o => o.TotalAmount);
+
+        return new BillResponse
+        {
+            BillNumber = billNumber,
+            TableNumber = table?.TableNumber ?? "",
+            TableLabel = table?.Label,
+            OrderCount = orders.Count,
+            TotalItems = orders.Sum(o => o.Items.Count),
+            SubTotal = orders.Sum(o => o.SubTotal),
+            Tax = orders.Sum(o => o.Tax),
+            DiscountAmount = orders.Sum(o => o.DiscountAmount),
+            TotalAmount = total,
+            PaidAmount = due?.PaidAmount ?? total,
+            DueAmount = due?.DueAmount ?? 0,
+            CustomerName = due?.CustomerName,
+            CustomerMobile = due?.CustomerMobile,
+            CompletedAt = orders.Max(o => o.CompletedAt ?? o.CreatedAt),
+            Orders = orders.Select(o => MapOrder(o, table?.TableNumber ?? "")).ToList(),
+            Adjustments = adjustments.Select(MapAdjustment).ToList()
+        };
+    }
+
+    public async Task<RemoveBillItemsResponse> RemoveBillItemsAsync(string billNumber, RemoveBillItemsRequest request, string? changedBy)
+    {
+        var orders = await _db.Orders
+            .Include(o => o.Items)
+            .Where(o => o.BillNumber == billNumber && o.Status == OrderStatus.Completed)
+            .ToListAsync();
+        if (orders.Count == 0)
+            throw new KeyNotFoundException("Bill not found.");
+
+        var previousTotal = orders.Sum(o => o.TotalAmount);
+        var items = orders.SelectMany(o => o.Items).ToDictionary(i => i.Id);
+
+        // Combine repeated lines for the same item, then validate
+        var removals = request.Items
+            .GroupBy(r => r.OrderItemId)
+            .Select(g => (ItemId: g.Key, Quantity: g.Sum(r => r.Quantity)))
+            .ToList();
+        foreach (var (itemId, quantity) in removals)
+        {
+            if (!items.TryGetValue(itemId, out var item))
+                throw new KeyNotFoundException("An item isn't on this bill any more. Refresh and try again.");
+            if (quantity > item.Quantity)
+                throw new InvalidOperationException($"Only {item.Quantity} × {item.ItemName} on the bill.");
+        }
+        var remainingQty = items.Values.Sum(i => i.Quantity) - removals.Sum(r => r.Quantity);
+        if (remainingQty <= 0)
+            throw new InvalidOperationException("A bill needs at least one item. To void the whole bill, contact the owner.");
+
+        var reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
+        var restored = new List<(Guid MenuItemId, int Quantity)>();
+
+        foreach (var order in orders)
+        {
+            var orderRemovals = removals.Where(r => order.Items.Any(i => i.Id == r.ItemId)).ToList();
+            if (orderRemovals.Count == 0) continue;
+
+            // Keep the tax rate the bill was charged at (settings may have changed since)
+            var taxRate = order.SubTotal > 0 ? order.Tax / order.SubTotal : 0m;
+            var discount = order.DiscountAmount;
+
+            foreach (var (itemId, quantity) in orderRemovals)
+            {
+                var item = order.Items.First(i => i.Id == itemId);
+                var lineUnit = item.Quantity > 0 ? item.TotalPrice / item.Quantity : item.UnitPrice;
+                var removedValue = Math.Round(lineUnit * quantity, 2);
+
+                _db.BillAdjustments.Add(new BillAdjustment
+                {
+                    TenantId = order.TenantId,
+                    BillNumber = billNumber,
+                    OrderId = order.Id,
+                    ItemName = item.ItemName,
+                    QuantityRemoved = quantity,
+                    AmountRemoved = Math.Round(removedValue * (1 + taxRate), 2),
+                    Reason = reason,
+                    ChangedBy = changedBy
+                });
+                restored.Add((item.MenuItemId, quantity));
+
+                if (quantity >= item.Quantity)
+                {
+                    _db.Set<OrderItem>().Remove(item);
+                    order.Items.Remove(item);
+                }
+                else
+                {
+                    item.Quantity -= quantity;
+                    item.TotalPrice = Math.Round(lineUnit * item.Quantity, 2);
+                    item.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
+            order.SubTotal = order.Items.Sum(i => i.TotalPrice);
+            order.Tax = Math.Round(order.SubTotal * taxRate, 2);
+            order.DiscountAmount = Math.Min(discount, order.SubTotal + order.Tax);
+            order.TotalAmount = order.SubTotal + order.Tax - order.DiscountAmount;
+            order.UpdatedAt = DateTime.UtcNow;
+
+            // Nothing left on this order: drop it from the bill
+            if (order.Items.Count == 0)
+                order.Status = OrderStatus.Cancelled;
+        }
+
+        var newTotal = orders.Where(o => o.Status == OrderStatus.Completed).Sum(o => o.TotalAmount);
+
+        // Udhaar on this bill: shrink what's owed; if they'd already paid more than the new total, it's a refund
+        decimal refund;
+        var due = await _db.CustomerDues.FirstOrDefaultAsync(d => d.BillNumber == billNumber);
+        if (due != null)
+        {
+            refund = Math.Max(0, due.PaidAmount - newTotal);
+            due.BillAmount = newTotal;
+            due.PaidAmount = Math.Min(due.PaidAmount, newTotal);
+            due.DueAmount = Math.Max(0, newTotal - due.PaidAmount);
+            if (due.DueAmount == 0 && !due.IsSettled)
+            {
+                due.IsSettled = true;
+                due.SettledAt = DateTime.UtcNow;
+            }
+            due.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            // Paid in full at billing time
+            refund = Math.Max(0, previousTotal - newTotal);
+        }
+
+        await _db.SaveChangesAsync();
+
+        try
+        {
+            await _inventoryService.RestoreForItemsAsync(restored, $"Returned: removed from bill {billNumber}", changedBy);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Inventory] Restore failed for bill {billNumber}: {ex.Message}");
+        }
+
+        return new RemoveBillItemsResponse
+        {
+            Bill = await GetBillAsync(billNumber),
+            PreviousTotal = previousTotal,
+            RefundAmount = refund
+        };
+    }
+
+    private static BillAdjustmentResponse MapAdjustment(BillAdjustment a) => new()
+    {
+        ItemName = a.ItemName,
+        QuantityRemoved = a.QuantityRemoved,
+        AmountRemoved = a.AmountRemoved,
+        Reason = a.Reason,
+        ChangedBy = a.ChangedBy,
+        ChangedAt = a.CreatedAt
+    };
+
     public async Task<List<OrderResponse>> GetOrderHistoryAsync(DateTime from, DateTime to)
     {
         // from/to are restaurant-local calendar days (inclusive)
@@ -597,6 +777,11 @@ public class OrderService : IOrderService
             .GroupBy(d => d.BillNumber!)
             .ToDictionary(g => g.Key, g => g.First());
 
+        var adjustmentsForBills = (await _db.BillAdjustments.ToListAsync())
+            .Where(a => billNumberSet.Contains(a.BillNumber))
+            .GroupBy(a => a.BillNumber)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(a => a.CreatedAt).Select(MapAdjustment).ToList());
+
         var bills = pagedBills.Select(b =>
         {
             var billOrders = orders.Where(o => o.BillNumber == b.BillNumber).ToList();
@@ -618,7 +803,8 @@ public class OrderService : IOrderService
                 CustomerName = due?.CustomerName,
                 CustomerMobile = due?.CustomerMobile,
                 CompletedAt = b.CompletedAt,
-                Orders = billOrders.Select(o => MapOrder(o, table?.TableNumber ?? "")).ToList()
+                Orders = billOrders.Select(o => MapOrder(o, table?.TableNumber ?? "")).ToList(),
+                Adjustments = adjustmentsForBills.GetValueOrDefault(b.BillNumber) ?? new()
             };
         }).ToList();
 
