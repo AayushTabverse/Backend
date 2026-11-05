@@ -212,7 +212,7 @@ public class WaitlistService : IWaitlistService
         await FinishSeatedAsync(new[] { entry });
         await _db.SaveChangesAsync();
         await BroadcastAsync(entry);
-        await _hub.Clients.Group(entry.TenantId).SendAsync("TablesChanged");
+        await _hub.BroadcastTablesChangedAsync(entry.TenantId);
 
         return Map(entry);
     }

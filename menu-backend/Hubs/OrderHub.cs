@@ -15,11 +15,20 @@ public class OrderHub : Hub
 {
     /// <summary>
     /// Join a tenant group to receive real-time order updates.
-    /// Called by kitchen/admin/waiter dashboards after connecting.
+    /// Called by kitchen/admin/waiter dashboards after connecting. Staff only: the tenant group
+    /// carries every order and alert, so the caller's token must belong to this restaurant.
+    /// Customers follow their own table/order/waitlist/reservation groups instead.
     /// </summary>
     public async Task JoinTenantGroup(string tenantId)
     {
+        var tokenTenant = Context.User?.FindFirst("tenant_id")?.Value;
+        if (Context.User?.Identity?.IsAuthenticated != true || tokenTenant != tenantId)
+            throw new HubException("Not allowed to join this restaurant's staff updates.");
+
         await Groups.AddToGroupAsync(Context.ConnectionId, tenantId);
+        // Direct walkie-talkie messages go to one staff member's own group
+        var userId = Context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId != null) await Groups.AddToGroupAsync(Context.ConnectionId, $"user-{userId}");
         await Clients.Caller.SendAsync("Joined", $"Connected to tenant {tenantId}");
     }
 

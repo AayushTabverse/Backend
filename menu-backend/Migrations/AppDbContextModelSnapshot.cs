@@ -74,6 +74,61 @@ namespace menu_backend.Migrations
                     b.ToTable("BillAdjustments");
                 });
 
+            modelBuilder.Entity("menu_backend.Models.BillPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("AccountKey")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("BillNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CustomerDueId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("PaidAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("RecordedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "BillNumber");
+
+                    b.HasIndex("TenantId", "PaidAt");
+
+                    b.ToTable("BillPayments");
+                });
+
             modelBuilder.Entity("menu_backend.Models.Customer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -93,8 +148,20 @@ namespace menu_backend.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<DateTime?>("DateOfBirth")
+                        .HasColumnType("date");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<int?>("LastBirthdayBonusYear")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LastVisitAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("PointsBalance")
+                        .HasColumnType("int");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
@@ -102,10 +169,18 @@ namespace menu_backend.Migrations
                         .HasColumnType("varchar(36)")
                         .HasColumnName("tenant_id");
 
+                    b.Property<decimal>("TotalSpent")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<int>("VisitCount")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerMobile");
 
                     b.ToTable("Customers");
                 });
@@ -352,6 +427,62 @@ namespace menu_backend.Migrations
                     b.ToTable("InventoryLogs");
                 });
 
+            modelBuilder.Entity("menu_backend.Models.LoyaltyTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("BalanceAfter")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BillNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("TenantId", "BillNumber");
+
+                    b.HasIndex("TenantId", "CustomerId");
+
+                    b.ToTable("LoyaltyTransactions");
+                });
+
             modelBuilder.Entity("menu_backend.Models.MarketingPost", b =>
                 {
                     b.Property<Guid>("Id")
@@ -464,6 +595,9 @@ namespace menu_backend.Migrations
                         .HasColumnType("varchar(36)")
                         .HasColumnName("tenant_id");
 
+                    b.Property<string>("TranslationsJson")
+                        .HasColumnType("longtext");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -512,6 +646,9 @@ namespace menu_backend.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<decimal>("PackagingCharge")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<int>("PreparationTimeMinutes")
                         .HasColumnType("int");
 
@@ -526,6 +663,9 @@ namespace menu_backend.Migrations
                         .HasMaxLength(36)
                         .HasColumnType("varchar(36)")
                         .HasColumnName("tenant_id");
+
+                    b.Property<string>("TranslationsJson")
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -619,6 +759,71 @@ namespace menu_backend.Migrations
                     b.ToTable("MenuItemModifiers");
                 });
 
+            modelBuilder.Entity("menu_backend.Models.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("AcknowledgedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("AcknowledgedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DedupKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Link")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Severity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "AcknowledgedAt");
+
+                    b.HasIndex("TenantId", "DedupKey");
+
+                    b.ToTable("Notifications");
+                });
+
             modelBuilder.Entity("menu_backend.Models.Order", b =>
                 {
                     b.Property<Guid>("Id")
@@ -632,18 +837,35 @@ namespace menu_backend.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<bool>("ChargeToRoom")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("CustomerMobile")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("CustomerName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
                     b.Property<string>("CustomerSessionId")
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<decimal>("DiscountAmount")
                         .HasColumnType("decimal(10,2)");
+
+                    b.Property<DateTime?>("DispatchedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<int>("EstimatedMinutes")
                         .HasColumnType("int");
@@ -651,13 +873,28 @@ namespace menu_backend.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<decimal>("LoyaltyDiscount")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<string>("OrderNumber")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<decimal>("PackagingCharge")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("PackingFee")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("PickedUpAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<DateTime?>("PreparedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("RoomId")
+                        .HasColumnType("char(36)");
 
                     b.Property<DateTime?>("ServedAt")
                         .HasColumnType("datetime(6)");
@@ -669,10 +906,13 @@ namespace menu_backend.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("StayId")
+                        .HasColumnType("char(36)");
+
                     b.Property<decimal>("SubTotal")
                         .HasColumnType("decimal(10,2)");
 
-                    b.Property<Guid>("TableId")
+                    b.Property<Guid?>("TableId")
                         .HasColumnType("char(36)");
 
                     b.Property<decimal>("Tax")
@@ -684,6 +924,10 @@ namespace menu_backend.Migrations
                         .HasColumnType("varchar(36)")
                         .HasColumnName("tenant_id");
 
+                    b.Property<string>("TokenNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<decimal>("TotalAmount")
                         .HasColumnType("decimal(10,2)");
 
@@ -694,6 +938,8 @@ namespace menu_backend.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("StayId");
 
                     b.HasIndex("TableId");
 
@@ -715,6 +961,9 @@ namespace menu_backend.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("IsParcel")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("ItemName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -733,6 +982,9 @@ namespace menu_backend.Migrations
 
                     b.Property<Guid>("OrderId")
                         .HasColumnType("char(36)");
+
+                    b.Property<decimal>("PackagingCharge")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
@@ -837,6 +1089,9 @@ namespace menu_backend.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("IsReprint")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<int>("MaxRetries")
                         .HasColumnType("int");
 
@@ -866,6 +1121,85 @@ namespace menu_backend.Migrations
                     b.HasIndex("OrderId");
 
                     b.ToTable("PrintJobs");
+                });
+
+            modelBuilder.Entity("menu_backend.Models.PurchaseBill", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<decimal>("Cgst")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("ExpenseLedger")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<decimal>("Igst")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("InvoiceDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("InvoiceNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("PaidAccountKey")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("RecordedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<decimal>("Sgst")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("SupplierGstin")
+                        .HasMaxLength(15)
+                        .HasColumnType("varchar(15)");
+
+                    b.Property<string>("SupplierName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<decimal>("TaxableAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "InvoiceDate");
+
+                    b.ToTable("PurchaseBills");
                 });
 
             modelBuilder.Entity("menu_backend.Models.Reservation", b =>
@@ -989,6 +1323,13 @@ namespace menu_backend.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<DateTime?>("BillRequestedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("BillRequestedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
                     b.Property<int>("Capacity")
                         .HasColumnType("int");
 
@@ -1044,6 +1385,50 @@ namespace menu_backend.Migrations
                         .IsUnique();
 
                     b.ToTable("Tables");
+                });
+
+            modelBuilder.Entity("menu_backend.Models.Room", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Floor")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("RoomNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("RoomType")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "RoomNumber");
+
+                    b.ToTable("Rooms");
                 });
 
             modelBuilder.Entity("menu_backend.Models.SocialMediaConnection", b =>
@@ -1206,15 +1591,87 @@ namespace menu_backend.Migrations
                     b.ToTable("StaffPayments");
                 });
 
+            modelBuilder.Entity("menu_backend.Models.Stay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("BillNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("CheckInAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("CheckedOutAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ExpectedCheckOutAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("GuestMobile")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("GuestName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("Pin")
+                        .HasMaxLength(6)
+                        .HasColumnType("varchar(6)");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("TenantId", "Status");
+
+                    b.ToTable("Stays");
+                });
+
             modelBuilder.Entity("menu_backend.Models.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("AccountingJson")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("Address")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
+
+                    b.Property<bool>("AutoPrintKot")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<decimal>("CgstPercent")
                         .HasColumnType("decimal(18,2)");
@@ -1254,9 +1711,19 @@ namespace menu_backend.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
+                    b.Property<int>("GeofenceRadiusMeters")
+                        .HasColumnType("int");
+
                     b.Property<string>("GoogleMapsUrl")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
+
+                    b.Property<string>("Gstin")
+                        .HasMaxLength(15)
+                        .HasColumnType("varchar(15)");
+
+                    b.Property<bool>("HotelModeEnabled")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("InstagramUrl")
                         .HasMaxLength(500)
@@ -1265,9 +1732,53 @@ namespace menu_backend.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<int>("KotCopies")
+                        .HasColumnType("int");
+
+                    b.Property<string>("KotPrintTrigger")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<int>("LastOrderMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double");
+
                     b.Property<string>("LogoUrl")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double");
+
+                    b.Property<int>("LoyaltyBirthdayBonus")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LoyaltyDailyEarnCap")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("LoyaltyEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("LoyaltyExpiryMonths")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("LoyaltyMaxRedeemPercent")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("LoyaltyMinRedeemPoints")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("LoyaltyPointValue")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("LoyaltyPointsPer100")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("LoyaltyWelcomeBonus")
+                        .HasColumnType("int");
 
                     b.Property<decimal>("MaxDiscountPercent")
                         .HasColumnType("decimal(18,2)");
@@ -1280,6 +1791,9 @@ namespace menu_backend.Migrations
                     b.Property<bool>("OnlineReservationsEnabled")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<DateTime?>("OrderingOpenUntil")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Phone")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
@@ -1287,6 +1801,9 @@ namespace menu_backend.Migrations
                     b.Property<string>("PrinterWidth")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<bool>("QrOrderingHoursEnabled")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<int>("ReservationGraceMinutes")
                         .HasColumnType("int");
@@ -1314,6 +1831,12 @@ namespace menu_backend.Migrations
 
                     b.Property<DateTime?>("SubdomainDnsUpdatedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("TakeawayEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<decimal>("TakeawayPackingFee")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
@@ -1454,6 +1977,77 @@ namespace menu_backend.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("menu_backend.Models.VoiceMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<byte[]>("Audio")
+                        .HasColumnType("mediumblob");
+
+                    b.Property<string>("AudioMime")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("QuickKey")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("QuickTable")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("RecipientName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid?>("RecipientUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("SenderName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("SenderRole")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<Guid>("SenderUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CreatedAt");
+
+                    b.ToTable("VoiceMessages");
                 });
 
             modelBuilder.Entity("menu_backend.Models.WaiterTableAssignment", b =>
@@ -1760,6 +2354,17 @@ namespace menu_backend.Migrations
                     b.Navigation("InventoryItem");
                 });
 
+            modelBuilder.Entity("menu_backend.Models.LoyaltyTransaction", b =>
+                {
+                    b.HasOne("menu_backend.Models.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+                });
+
             modelBuilder.Entity("menu_backend.Models.MenuCategory", b =>
                 {
                     b.HasOne("menu_backend.Models.Tenant", "Tenant")
@@ -1818,8 +2423,7 @@ namespace menu_backend.Migrations
                     b.HasOne("menu_backend.Models.RestaurantTable", "Table")
                         .WithMany("Orders")
                         .HasForeignKey("TableId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Table");
                 });
@@ -1919,6 +2523,17 @@ namespace menu_backend.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("menu_backend.Models.Stay", b =>
+                {
+                    b.HasOne("menu_backend.Models.Room", "Room")
+                        .WithMany("Stays")
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Room");
+                });
+
             modelBuilder.Entity("menu_backend.Models.TenantSubscription", b =>
                 {
                     b.HasOne("menu_backend.Models.Tenant", "Tenant")
@@ -2010,6 +2625,11 @@ namespace menu_backend.Migrations
             modelBuilder.Entity("menu_backend.Models.RestaurantTable", b =>
                 {
                     b.Navigation("Orders");
+                });
+
+            modelBuilder.Entity("menu_backend.Models.Room", b =>
+                {
+                    b.Navigation("Stays");
                 });
 
             modelBuilder.Entity("menu_backend.Models.Tenant", b =>

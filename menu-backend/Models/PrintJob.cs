@@ -26,6 +26,9 @@ public class PrintJob : BaseEntity
 
     public DateTime? PrintedAt { get; set; }
 
+    /// <summary>Printed on request by staff, not by the restaurant's auto-print setting.</summary>
+    public bool IsReprint { get; set; }
+
     // Navigation
     public Order? Order { get; set; }
 }

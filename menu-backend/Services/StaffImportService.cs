@@ -244,6 +244,8 @@ public class StaffImportService : IStaffImportService
         "captain" or "headwaiter" or "seniorwaiter" => UserRole.Captain,
         "waiter" or "server" or "steward" or "waitress" => UserRole.Waiter,
         "kitchen" or "chef" or "cook" or "kitchenstaff" => UserRole.Kitchen,
+        "frontdesk" or "reception" or "receptionist" => UserRole.FrontDesk,
+        "roomservice" or "roomboy" or "roomattendant" or "bellboy" => UserRole.RoomService,
         "payrollonly" or "payroll" or "noappaccess" or "noaccess" or "helper" or "none" or "support" => UserRole.Helper,
         _ => null
     };

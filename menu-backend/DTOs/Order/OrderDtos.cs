@@ -4,8 +4,39 @@ namespace menu_backend.DTOs.Order;
 
 public class CreateOrderRequest
 {
-    [Required]
-    public Guid TableId { get; set; }
+    /// <summary>Required for dine-in; empty for takeaway.</summary>
+    public Guid? TableId { get; set; }
+
+    /// <summary>"DineIn" (default), "Takeaway" or "RoomService".</summary>
+    [MaxLength(20)]
+    public string? Type { get; set; }
+
+    /// <summary>Takeaway: who to call when it's ready (required when the customer orders by QR).</summary>
+    [MaxLength(100)]
+    public string? CustomerName { get; set; }
+
+    [MaxLength(20)]
+    public string? CustomerMobile { get; set; }
+
+    /// <summary>Room service: the room ordering.</summary>
+    public Guid? RoomId { get; set; }
+
+    /// <summary>Room service from the room QR: the PIN the guest got at check-in.</summary>
+    [MaxLength(6)]
+    public string? RoomPin { get; set; }
+
+    /// <summary>Room service: add to the room bill (paid at checkout) instead of paying on delivery.</summary>
+    public bool ChargeToRoom { get; set; }
+
+    /// <summary>Customer's phone location, when the restaurant only takes QR orders from inside.</summary>
+    [Range(-90, 90)]
+    public double? Latitude { get; set; }
+
+    [Range(-180, 180)]
+    public double? Longitude { get; set; }
+
+    /// <summary>The phone's reported location accuracy, in metres.</summary>
+    public double? LocationAccuracy { get; set; }
 
     public string? SpecialInstructions { get; set; }
 
@@ -25,6 +56,9 @@ public class CreateOrderItemRequest
     public string? Modifiers { get; set; }
 
     public string? Notes { get; set; }
+
+    /// <summary>Pack this item to take away (dine-in customers ordering something for home).</summary>
+    public bool IsParcel { get; set; }
 }
 
 public class UpdateOrderStatusRequest
@@ -37,6 +71,24 @@ public class UpdateOrderStatusRequest
 
 public class ClearTableRequest
 {
+    /// <summary>
+    /// Bill only these orders (one party at a shared table, or takeaway orders). Empty = the whole table.
+    /// </summary>
+    public List<Guid>? OrderIds { get; set; }
+
+    /// <summary>Loyalty points the customer (by CustomerMobile) uses on this bill; taken off before tax.</summary>
+    [Range(0, 1_000_000)]
+    public int RedeemPoints { get; set; }
+
+    /// <summary>
+    /// How the paid part was paid (cash, UPI, card… several for a split payment). Their total is the
+    /// amount paid now; the rest goes on udhaar. Empty = PaidAmount (or the whole bill) in cash.
+    /// </summary>
+    public List<DTOs.Accounting.PaymentSplit>? Payments { get; set; }
+
+    /// <summary>Saved on the customer for the birthday bonus.</summary>
+    public DateOnly? CustomerDateOfBirth { get; set; }
+
     public decimal DiscountAmount { get; set; }
     public decimal PaidAmount { get; set; }
     public string? CustomerName { get; set; }
@@ -62,8 +114,9 @@ public class OrderResponse
 {
     public Guid Id { get; set; }
     public string OrderNumber { get; set; } = string.Empty;
+    /// <summary>Table number; the pickup token for takeaway.</summary>
     public string TableNumber { get; set; } = string.Empty;
-    public Guid TableId { get; set; }
+    public Guid? TableId { get; set; }
     public string Status { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public decimal SubTotal { get; set; }
@@ -79,6 +132,18 @@ public class OrderResponse
     public DateTime? CompletedAt { get; set; }
     public string? BillNumber { get; set; }
     public string? CustomerSessionId { get; set; }
+    public decimal PackagingCharge { get; set; }
+    /// <summary>Loyalty points redeemed (₹), before tax.</summary>
+    public decimal LoyaltyDiscount { get; set; }
+    public string? TokenNumber { get; set; }
+    public string? CustomerName { get; set; }
+    public string? CustomerMobile { get; set; }
+    public DateTime? PickedUpAt { get; set; }
+    public Guid? RoomId { get; set; }
+    public Guid? StayId { get; set; }
+    public bool ChargeToRoom { get; set; }
+    public DateTime? DispatchedAt { get; set; }
+    public DateTime? DeliveredAt { get; set; }
     public List<OrderItemResponse> Items { get; set; } = new();
     public PaymentSummary? Payment { get; set; }
 }
@@ -93,6 +158,9 @@ public class OrderItemResponse
     public decimal TotalPrice { get; set; }
     public string? Modifiers { get; set; }
     public string? Notes { get; set; }
+    public bool IsParcel { get; set; }
+    /// <summary>Per unit.</summary>
+    public decimal PackagingCharge { get; set; }
 }
 
 public class PaymentSummary
@@ -115,17 +183,23 @@ public class LiveOrdersResponse
 /// </summary>
 public class TableSessionSummary
 {
-    public Guid TableId { get; set; }
+    public Guid? TableId { get; set; }
     public string TableNumber { get; set; } = string.Empty;
     public string? TableLabel { get; set; }
     public int ActiveOrderCount { get; set; }
     public decimal GrandSubTotal { get; set; }
+    public decimal GrandPackaging { get; set; }
+    /// <summary>Loyalty points redeemed (₹), taken off before tax.</summary>
+    public decimal GrandLoyaltyDiscount { get; set; }
     public decimal GrandTax { get; set; }
     public decimal GrandDiscount { get; set; }
     public decimal GrandTotal { get; set; }
     public decimal PaidAmount { get; set; }
     public decimal DueAmount { get; set; }
     public List<OrderResponse> Orders { get; set; } = new();
+
+    /// <summary>Set on a just-settled bill when the customer is in the loyalty program.</summary>
+    public DTOs.Loyalty.LoyaltyOutcome? Loyalty { get; set; }
 }
 
 /// <summary>
@@ -139,6 +213,10 @@ public class TableSessionSummary
     public int OrderCount { get; set; }
     public int TotalItems { get; set; }
     public decimal SubTotal { get; set; }
+    public decimal PackagingCharge { get; set; }
+    public decimal LoyaltyDiscount { get; set; }
+    public int PointsEarned { get; set; }
+    public int PointsRedeemed { get; set; }
     public decimal Tax { get; set; }
     public decimal DiscountAmount { get; set; }
     public decimal TotalAmount { get; set; }

@@ -33,7 +33,7 @@ public class AnalyticsInsightsService : IAnalyticsInsightsService
         Guid Id, string OrderNumber, DateTime CreatedAt, DateTime Local, OrderStatus Status,
         decimal Total, decimal Discount, decimal Tax,
         DateTime? AcceptedAt, DateTime? PreparedAt, DateTime? ServedAt, int EstimatedMinutes,
-        bool ViaQr, Guid TableId, string Table, List<ItemRow> Items)
+        bool ViaQr, Guid? TableId, string Table, List<ItemRow> Items)
     {
         public bool Counts => Status != OrderStatus.Cancelled;
         public DateOnly Day => DateOnly.FromDateTime(Local);
@@ -49,7 +49,7 @@ public class AnalyticsInsightsService : IAnalyticsInsightsService
             {
                 o.Id, o.OrderNumber, o.CreatedAt, o.Status, o.TotalAmount, o.DiscountAmount, o.Tax,
                 o.AcceptedAt, o.PreparedAt, o.ServedAt, o.EstimatedMinutes, o.CustomerSessionId, o.TableId,
-                Table = o.Table != null ? o.Table.TableNumber : "",
+                Table = o.Table != null ? o.Table.TableNumber : o.Type == OrderType.Takeaway ? "Takeaway" : o.Type == OrderType.RoomService ? "Room service" : "",
                 Items = o.Items.Where(i => !i.IsDeleted).Select(i => new { i.MenuItemId, i.ItemName, i.Quantity, i.TotalPrice }).ToList()
             })
             .ToListAsync();
@@ -383,7 +383,7 @@ public class AnalyticsInsightsService : IAnalyticsInsightsService
             Preparing = open.Count(o => o.Status == OrderStatus.Preparing),
             Ready = open.Count(o => o.Status == OrderStatus.Ready),
             Served = open.Count(o => o.Status == OrderStatus.Served),
-            OccupiedTables = open.Select(o => o.TableId).Distinct().Count(),
+            OccupiedTables = open.Where(o => o.TableId != null).Select(o => o.TableId).Distinct().Count(),
             TotalTables = await _db.Tables.CountAsync(),
             OldestWaitMinutes = waiting.Count == 0 ? 0 : (int)(DateTime.UtcNow - waiting.Min(o => o.CreatedAt)).TotalMinutes
         };

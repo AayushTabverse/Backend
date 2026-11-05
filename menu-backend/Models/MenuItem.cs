@@ -11,8 +11,14 @@ public class MenuItem : BaseEntity
     [MaxLength(1000)]
     public string? Description { get; set; }
 
+    /// <summary>Name/description in other languages: {"hi": {"name": "…", "description": "…"}, "gu": {…}}.</summary>
+    public string? TranslationsJson { get; set; }
+
     [Required]
     public decimal Price { get; set; }
+
+    /// <summary>Packing charge per unit when ordered as parcel/takeaway (box, container). 0 = free.</summary>
+    public decimal PackagingCharge { get; set; }
 
     [MaxLength(500)]
     public string? ImageUrl { get; set; }

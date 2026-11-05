@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using menu_backend.DTOs;
 using menu_backend.Helpers;
 using menu_backend.DTOs.Table;
@@ -139,6 +140,43 @@ public class TableController : ControllerBase
     }
 
     /// <summary>
+    /// Waiter marks the table ready for its bill; billing staff are alerted.
+    /// </summary>
+    [HttpPost("{id}/request-bill")]
+    [Authorize(Roles = Roles.FloorStaff)]
+    public async Task<IActionResult> RequestBill(Guid id)
+    {
+        try
+        {
+            var result = await _tableService.RequestBillAsync(id, User.FindFirstValue(ClaimTypes.Name));
+            return Ok(ApiResponse<TableResponse>.Ok(result, "Counter notified: ready for bill."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    [HttpPost("{id}/cancel-bill-request")]
+    [Authorize(Roles = Roles.FloorStaff)]
+    public async Task<IActionResult> CancelBillRequest(Guid id)
+    {
+        try
+        {
+            await _tableService.CancelBillRequestAsync(id);
+            return Ok(ApiResponse.Ok("Bill request cancelled."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>
     /// Assign tables to a waiter.
     /// </summary>
     [HttpPost("assign")]
@@ -215,6 +253,16 @@ public class TableController : ControllerBase
     [Authorize(Roles = Roles.FloorStaff)]
     public Task<IActionResult> Transfer(Guid id, [FromBody] TransferTableRequest request) =>
         RunTableAction(() => _tableService.TransferAsync(id, request.ToTableId), "Table transferred.");
+
+    /// <summary>
+    /// Move this table's running orders onto another table (e.g. dragged onto it): as a second party
+    /// with its own bill, or into the target table's bill. This table becomes free.
+    /// </summary>
+    [HttpPost("{id}/move-orders")]
+    [Authorize(Roles = Roles.FloorStaff)]
+    public Task<IActionResult> MoveOrders(Guid id, [FromBody] MoveOrdersRequest request) =>
+        RunTableAction(() => _tableService.MoveOrdersAsync(id, request.ToTableId, request.SeparateParty),
+            request.SeparateParty ? "Moved as a separate party." : "Moved onto the same bill.");
 
     private async Task<IActionResult> RunTableAction(Func<Task<TableResponse>> action, string message)
     {

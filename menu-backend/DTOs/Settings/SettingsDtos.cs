@@ -25,6 +25,27 @@ public class BusinessSettingsResponse
     public decimal ServiceChargePercent { get; set; }
     public decimal MaxDiscountPercent { get; set; }
     public bool SpinWheelEnabled { get; set; }
+    public int LoyaltyDailyEarnCap { get; set; }
+    public int LoyaltyBirthdayBonus { get; set; }
+    public int LoyaltyWelcomeBonus { get; set; }
+    public int LoyaltyExpiryMonths { get; set; }
+    public decimal LoyaltyMaxRedeemPercent { get; set; }
+    public int LoyaltyMinRedeemPoints { get; set; }
+    public decimal LoyaltyPointValue { get; set; }
+    public decimal LoyaltyPointsPer100 { get; set; }
+    public bool LoyaltyEnabled { get; set; }
+    public bool HotelModeEnabled { get; set; }
+    public DateTime? OrderingOpenUntil { get; set; }
+    public int GeofenceRadiusMeters { get; set; }
+    public double? Longitude { get; set; }
+    public double? Latitude { get; set; }
+    public int LastOrderMinutes { get; set; }
+    public bool QrOrderingHoursEnabled { get; set; }
+    public decimal TakeawayPackingFee { get; set; }
+    public bool TakeawayEnabled { get; set; }
+    public int KotCopies { get; set; }
+    public string KotPrintTrigger { get; set; } = "OnOrder";
+    public bool AutoPrintKot { get; set; }
 }
 
 public class UpdateBusinessSettingsRequest
@@ -88,4 +109,59 @@ public class UpdateBusinessSettingsRequest
     public decimal? MaxDiscountPercent { get; set; }
 
     public bool? SpinWheelEnabled { get; set; }
+
+    [Range(0, 100000)]
+    public int? LoyaltyDailyEarnCap { get; set; }
+
+    [Range(0, 100000)]
+    public int? LoyaltyBirthdayBonus { get; set; }
+
+    [Range(0, 100000)]
+    public int? LoyaltyWelcomeBonus { get; set; }
+
+    [Range(0, 120)]
+    public int? LoyaltyExpiryMonths { get; set; }
+
+    [Range(0, 100)]
+    public decimal? LoyaltyMaxRedeemPercent { get; set; }
+
+    [Range(0, 100000)]
+    public int? LoyaltyMinRedeemPoints { get; set; }
+
+    [Range(0.01, 100)]
+    public decimal? LoyaltyPointValue { get; set; }
+
+    [Range(0, 100)]
+    public decimal? LoyaltyPointsPer100 { get; set; }
+
+    public bool? LoyaltyEnabled { get; set; }
+
+    public bool? HotelModeEnabled { get; set; }
+
+    [Range(0, 5000)]
+    public int? GeofenceRadiusMeters { get; set; }
+
+    [Range(-180, 180)]
+    public double? Longitude { get; set; }
+
+    [Range(-90, 90)]
+    public double? Latitude { get; set; }
+
+    [Range(0, 240)]
+    public int? LastOrderMinutes { get; set; }
+
+    public bool? QrOrderingHoursEnabled { get; set; }
+
+    [Range(0, 10000)]
+    public decimal? TakeawayPackingFee { get; set; }
+
+    public bool? TakeawayEnabled { get; set; }
+
+    [Range(1, 5)]
+    public int? KotCopies { get; set; }
+
+    [MaxLength(20)]
+    public string? KotPrintTrigger { get; set; }
+
+    public bool? AutoPrintKot { get; set; }
 }

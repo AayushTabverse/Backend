@@ -1,3 +1,4 @@
+using menu_backend.Services;
 using menu_backend.DTOs;
 using menu_backend.Helpers;
 using menu_backend.DTOs.Menu;
@@ -106,6 +107,15 @@ public class MenuController : ControllerBase
         return Ok(ApiResponse<List<CategoryResponse>>.Ok(result));
     }
 
+    /// <summary>Top sellers for the waiter's order screen.</summary>
+    [HttpGet("popular")]
+    [Authorize(Roles = Roles.FloorStaff)]
+    public async Task<IActionResult> GetPopular([FromQuery] int days = 30, [FromQuery] int limit = 24)
+    {
+        var result = await _menuService.GetPopularItemsAsync(Math.Clamp(days, 1, 365), Math.Clamp(limit, 1, 100));
+        return Ok(ApiResponse<List<PopularItemResponse>>.Ok(result));
+    }
+
     // ── Items ──
 
     [HttpPost("item")]
@@ -162,11 +172,12 @@ public class MenuController : ControllerBase
     /// </summary>
     [HttpGet]
     [AllowAnonymous]
-    public async Task<IActionResult> GetMenu([FromQuery] string tenantId)
+    public async Task<IActionResult> GetMenu([FromQuery] string tenantId, [FromQuery] string? lang)
     {
         try
         {
             var result = await _menuService.GetFullMenuAsync(tenantId);
+            MenuTranslations.Localize(result, lang);
             return Ok(ApiResponse<FullMenuResponse>.Ok(result));
         }
         catch (KeyNotFoundException ex)
@@ -180,16 +191,40 @@ public class MenuController : ControllerBase
     /// </summary>
     [HttpGet("by-table/{tableId}")]
     [AllowAnonymous]
-    public async Task<IActionResult> GetMenuByTable(Guid tableId)
+    public async Task<IActionResult> GetMenuByTable(Guid tableId, [FromQuery] string? lang)
     {
         try
         {
             var result = await _menuService.GetMenuByTableAsync(tableId);
+            MenuTranslations.Localize(result, lang);
             return Ok(ApiResponse<FullMenuResponse>.Ok(result));
         }
         catch (KeyNotFoundException ex)
         {
             return NotFound(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Fills in Hindi and Gujarati names/descriptions with AI for dishes and categories that don't
+    /// have them yet (overwrite=true redoes all). Staff can correct them on the Menu page.
+    /// </summary>
+    [HttpPost("translate")]
+    public async Task<IActionResult> AutoTranslate([FromServices] MenuTranslator translator, [FromQuery] bool overwrite = false)
+    {
+        try
+        {
+            var result = await _menuService.AutoTranslateAsync(overwrite, translator);
+            if (result.Changed == 0) return Ok(ApiResponse.Ok("Everything is already translated."));
+
+            var usd = MenuTranslator.EstimateUsd(result.Model, result.InputTokens, result.OutputTokens);
+            var cost = usd == null ? "" : usd < 0.01m ? $", under ₹1" : $", about ${usd:0.00} (₹{usd * 85:0.00})";
+            return Ok(ApiResponse.Ok(
+                $"Translated {result.Changed} {(result.Changed == 1 ? "item" : "dishes and categories")} ({result.InputTokens + result.OutputTokens:N0} AI tokens{cost})."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
         }
     }
 

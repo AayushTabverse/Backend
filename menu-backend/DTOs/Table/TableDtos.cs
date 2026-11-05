@@ -38,6 +38,9 @@ public class TableResponse
     public int ActiveOrderCount { get; set; }
     public bool IsCallingWaiter { get; set; }
     public DateTime? WaiterCalledAt { get; set; }
+    /// <summary>Waiter marked the table ready for its bill.</summary>
+    public DateTime? BillRequestedAt { get; set; }
+    public string? BillRequestedBy { get; set; }
     public string? QrCodeUrl { get; set; }
     public string? QrData { get; set; }
     public List<string>? AssignedWaiterIds { get; set; }
@@ -82,6 +85,15 @@ public class TransferTableRequest
 {
     [Required]
     public Guid ToTableId { get; set; }
+}
+
+public class MoveOrdersRequest
+{
+    [Required]
+    public Guid ToTableId { get; set; }
+
+    /// <summary>True: they stay a separate party (own bill); false: they join the target table's bill.</summary>
+    public bool SeparateParty { get; set; }
 }
 
 public class AssignTablesRequest

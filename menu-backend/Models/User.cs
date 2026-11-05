@@ -11,7 +11,9 @@ public enum UserRole
     Manager = 4,  // Runs the floor and staff; no billing/subscription, settings or marketing
     Cashier = 5,  // Settles bills, handles udhaar
     Captain = 6,  // Senior waiter; takes orders on any table
-    Helper = 7    // Payroll only (cleaner, dishwasher, guard…): no email/password, cannot log in
+    Helper = 7,   // Payroll only (cleaner, dishwasher, guard…): no email/password, cannot log in
+    FrontDesk = 8,   // Hotel reception: rooms, check-in/out, room bills (folios)
+    RoomService = 9  // Hotel room service attendant: carries orders to rooms
 }
 
 public class User : BaseEntity

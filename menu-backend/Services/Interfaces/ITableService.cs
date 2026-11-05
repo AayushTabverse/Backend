@@ -12,6 +12,16 @@ public interface ITableService
     Task<byte[]> GenerateQrCodeAsync(Guid tableId, string baseUrl);
     Task<TableResponse> CallWaiterAsync(Guid tableId);
     Task DismissCallAsync(Guid tableId);
+
+    /// <summary>
+    /// Move a table's running orders onto another (occupied or free) table. <paramref name="separateParty"/>:
+    /// keep them as their own bill(s) there; otherwise they join the target table's bill.
+    /// </summary>
+    Task<TableResponse> MoveOrdersAsync(Guid fromTableId, Guid toTableId, bool separateParty);
+
+    /// <summary>Waiter marks the table done eating: the counter is alerted to print the bill.</summary>
+    Task<TableResponse> RequestBillAsync(Guid tableId, string? requestedBy);
+    Task CancelBillRequestAsync(Guid tableId);
     Task AssignTablesToWaiterAsync(Guid waiterId, List<Guid> tableIds);
     Task<WaiterAssignmentResponse> GetWaiterAssignmentAsync(Guid waiterId);
     Task<List<WaiterAssignmentResponse>> GetAllAssignmentsAsync();

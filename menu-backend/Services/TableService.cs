@@ -81,6 +81,8 @@ public class TableService : ITableService
                 ActiveOrderCount = t.Orders.Count(o => !o.IsDeleted && activeStatuses.Contains(o.Status)),
                 IsCallingWaiter = t.IsCallingWaiter,
                 WaiterCalledAt = t.WaiterCalledAt,
+                BillRequestedAt = t.BillRequestedAt,
+                BillRequestedBy = t.BillRequestedBy,
                 QrCodeUrl = t.QrCodeUrl,
                 QrData = t.QrData
             })
@@ -277,7 +279,7 @@ public class TableService : ITableService
         // Running orders on the merged tables move to the main table's bill
         var mergeIds = toMerge.Select(t => t.Id).ToList();
         var orders = (await _db.Orders.Where(o => ActiveOrderStatuses.Contains(o.Status)).ToListAsync())
-            .Where(o => mergeIds.Contains(o.TableId))
+            .Where(o => o.TableId != null && mergeIds.Contains(o.TableId.Value))
             .ToList();
         foreach (var order in orders)
             order.TableId = main.Id;
@@ -287,6 +289,8 @@ public class TableService : ITableService
             t.MergedIntoTableId = main.Id;
             t.IsCallingWaiter = false;
             t.WaiterCalledAt = null;
+            t.BillRequestedAt = null;
+            t.BillRequestedBy = null;
         }
 
         await _db.SaveChangesAsync();
@@ -376,6 +380,13 @@ public class TableService : ITableService
             from.IsCallingWaiter = false;
             from.WaiterCalledAt = null;
         }
+        if (from.BillRequestedAt != null)
+        {
+            to.BillRequestedAt = from.BillRequestedAt;
+            to.BillRequestedBy = from.BillRequestedBy;
+            from.BillRequestedAt = null;
+            from.BillRequestedBy = null;
+        }
 
         await _db.SaveChangesAsync();
         await BroadcastTablesChangedAsync(from.TenantId);
@@ -394,7 +405,7 @@ public class TableService : ITableService
 
     /// <summary>Waiter/admin screens and the kitchen (table numbers on tickets) refresh on this.</summary>
     private Task BroadcastTablesChangedAsync(string tenantId) =>
-        _hub.Clients.Group(tenantId).SendAsync("TablesChanged");
+        _hub.BroadcastTablesChangedAsync(tenantId);
 
     private static TableResponse MapTable(RestaurantTable table) => new()
     {
@@ -405,9 +416,85 @@ public class TableService : ITableService
         IsActive = table.IsActive,
         IsCallingWaiter = table.IsCallingWaiter,
         WaiterCalledAt = table.WaiterCalledAt,
+        BillRequestedAt = table.BillRequestedAt,
+        BillRequestedBy = table.BillRequestedBy,
         QrCodeUrl = table.QrCodeUrl,
         QrData = table.QrData
     };
+
+    public async Task<TableResponse> MoveOrdersAsync(Guid fromTableId, Guid toTableId, bool separateParty)
+    {
+        if (fromTableId == toTableId)
+            throw new InvalidOperationException("Pick a different table.");
+
+        var all = await _db.Tables.ToListAsync();
+        var from = all.FirstOrDefault(t => t.Id == fromTableId)
+            ?? throw new KeyNotFoundException("Table not found.");
+        var to = all.FirstOrDefault(t => t.Id == toTableId)
+            ?? throw new KeyNotFoundException("Table not found.");
+        // Dropped on a table that's merged into another: the bill lives on the main table
+        if (to.MergedIntoTableId is Guid mainId)
+            to = all.FirstOrDefault(t => t.Id == mainId) ?? to;
+        if (from.Id == to.Id)
+            throw new InvalidOperationException("These tables are already on one bill.");
+        if (from.MergedIntoTableId != null)
+            throw new InvalidOperationException($"Table {from.TableNumber} is merged with another table. Move the main table instead.");
+        if (!to.IsActive)
+            throw new InvalidOperationException($"Table {to.TableNumber} is inactive.");
+
+        var active = await _db.Orders.Where(o => ActiveOrderStatuses.Contains(o.Status)).ToListAsync();
+        var moving = active.Where(o => o.TableId == from.Id).ToList();
+        if (moving.Count == 0)
+            throw new InvalidOperationException($"Table {from.TableNumber} has no running orders to move.");
+        var staying = active.Where(o => o.TableId == to.Id).ToList();
+
+        if (separateParty)
+        {
+            // Keep each of the moved parties apart from the target table's parties. Phones keep their own
+            // session; staff-entered orders (no session) or a clash with a target party get a new party id.
+            var targetParties = staying.Select(o => o.CustomerSessionId).ToHashSet();
+            var newIds = new Dictionary<string, string>();
+            foreach (var o in moving)
+            {
+                var key = o.CustomerSessionId ?? "";
+                if (o.CustomerSessionId != null && !targetParties.Contains(o.CustomerSessionId)) continue;
+                if (!newIds.TryGetValue(key, out var id))
+                    newIds[key] = id = $"w-{Guid.NewGuid():N}"[..20];
+                o.CustomerSessionId = id;
+            }
+        }
+        else
+        {
+            // One bill with the target table: join its (first) party
+            var targetParty = staying.OrderBy(o => o.CreatedAt).Select(o => o.CustomerSessionId).FirstOrDefault();
+            foreach (var o in moving) o.CustomerSessionId = targetParty;
+        }
+
+        foreach (var o in moving) o.TableId = to.Id;
+
+        // The seated waitlist party moves with its orders; the old table is free again
+        var holdLinks = (await _db.WaitlistEntryTables
+                .Where(x => x.WaitlistEntry!.Status == WaitlistStatus.Seated)
+                .ToListAsync())
+            .Where(x => x.TableId == from.Id)
+            .ToList();
+        foreach (var link in holdLinks) link.TableId = to.Id;
+
+        if (from.BillRequestedAt != null && to.BillRequestedAt == null)
+        {
+            to.BillRequestedAt = from.BillRequestedAt;
+            to.BillRequestedBy = from.BillRequestedBy;
+        }
+        from.BillRequestedAt = null;
+        from.BillRequestedBy = null;
+        from.IsCallingWaiter = false;
+        from.WaiterCalledAt = null;
+
+        await _db.SaveChangesAsync();
+        await BroadcastTablesChangedAsync(from.TenantId);
+
+        return (await GetTablesAsync()).First(t => t.Id == to.Id);
+    }
 
     public async Task<TableResponse> CallWaiterAsync(Guid tableId)
     {
@@ -437,6 +524,42 @@ public class TableService : ITableService
 
         await _hub.Clients.Group(table.TenantId)
             .SendAsync("WaiterCallDismissed", new { TableId = tableId, TableNumber = table.TableNumber });
+    }
+
+    public async Task<TableResponse> RequestBillAsync(Guid tableId, string? requestedBy)
+    {
+        var table = await _db.Tables.FindAsync(tableId)
+            ?? throw new KeyNotFoundException("Table not found.");
+        // A merged table's bill is the main table's
+        if (table.MergedIntoTableId is Guid mainId)
+            table = await _db.Tables.FindAsync(mainId) ?? table;
+
+        var hasOrders = await _db.Orders.AnyAsync(o => o.TableId == table.Id
+            && o.Status != OrderStatus.Completed && o.Status != OrderStatus.Cancelled);
+        if (!hasOrders)
+            throw new InvalidOperationException($"Table {table.TableNumber} has no open orders to bill.");
+
+        table.BillRequestedAt = DateTime.UtcNow;
+        table.BillRequestedBy = requestedBy;
+        await _db.SaveChangesAsync();
+
+        await _hub.Clients.Group(table.TenantId)
+            .SendAsync("BillRequested", new { TableId = table.Id, TableNumber = table.TableNumber, RequestedBy = requestedBy });
+        await BroadcastTablesChangedAsync(table.TenantId);
+        return MapTable(table);
+    }
+
+    public async Task CancelBillRequestAsync(Guid tableId)
+    {
+        var table = await _db.Tables.FindAsync(tableId)
+            ?? throw new KeyNotFoundException("Table not found.");
+        if (table.MergedIntoTableId is Guid mainId)
+            table = await _db.Tables.FindAsync(mainId) ?? table;
+
+        table.BillRequestedAt = null;
+        table.BillRequestedBy = null;
+        await _db.SaveChangesAsync();
+        await BroadcastTablesChangedAsync(table.TenantId);
     }
 
     public async Task AssignTablesToWaiterAsync(Guid waiterId, List<Guid> tableIds)

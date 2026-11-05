@@ -61,10 +61,43 @@ public class SettingsService : ISettingsService
         if (request.ServiceChargePercent != null) tenant.ServiceChargePercent = request.ServiceChargePercent.Value;
         if (request.MaxDiscountPercent != null) tenant.MaxDiscountPercent = request.MaxDiscountPercent.Value;
         if (request.SpinWheelEnabled != null) tenant.SpinWheelEnabled = request.SpinWheelEnabled.Value;
+        if (request.LoyaltyDailyEarnCap != null) tenant.LoyaltyDailyEarnCap = request.LoyaltyDailyEarnCap.Value;
+        if (request.LoyaltyBirthdayBonus != null) tenant.LoyaltyBirthdayBonus = request.LoyaltyBirthdayBonus.Value;
+        if (request.LoyaltyWelcomeBonus != null) tenant.LoyaltyWelcomeBonus = request.LoyaltyWelcomeBonus.Value;
+        if (request.LoyaltyExpiryMonths != null) tenant.LoyaltyExpiryMonths = request.LoyaltyExpiryMonths.Value;
+        if (request.LoyaltyMaxRedeemPercent != null) tenant.LoyaltyMaxRedeemPercent = request.LoyaltyMaxRedeemPercent.Value;
+        if (request.LoyaltyMinRedeemPoints != null) tenant.LoyaltyMinRedeemPoints = request.LoyaltyMinRedeemPoints.Value;
+        if (request.LoyaltyPointValue != null) tenant.LoyaltyPointValue = request.LoyaltyPointValue.Value;
+        if (request.LoyaltyPointsPer100 != null) tenant.LoyaltyPointsPer100 = request.LoyaltyPointsPer100.Value;
+        if (request.LoyaltyEnabled != null) tenant.LoyaltyEnabled = request.LoyaltyEnabled.Value;
+        if (request.HotelModeEnabled != null) tenant.HotelModeEnabled = request.HotelModeEnabled.Value;
+        if (request.GeofenceRadiusMeters != null) tenant.GeofenceRadiusMeters = request.GeofenceRadiusMeters.Value;
+        if (request.Longitude != null) tenant.Longitude = request.Longitude;
+        if (request.Latitude != null) tenant.Latitude = request.Latitude;
+        if (request.LastOrderMinutes != null) tenant.LastOrderMinutes = request.LastOrderMinutes.Value;
+        if (request.QrOrderingHoursEnabled != null) tenant.QrOrderingHoursEnabled = request.QrOrderingHoursEnabled.Value;
+        if (request.TakeawayPackingFee != null) tenant.TakeawayPackingFee = request.TakeawayPackingFee.Value;
+        if (request.TakeawayEnabled != null) tenant.TakeawayEnabled = request.TakeawayEnabled.Value;
+        if (request.KotCopies != null) tenant.KotCopies = request.KotCopies.Value;
+        if (request.KotPrintTrigger is "OnOrder" or "OnAccept") tenant.KotPrintTrigger = request.KotPrintTrigger;
+        if (request.AutoPrintKot != null) tenant.AutoPrintKot = request.AutoPrintKot.Value;
 
         tenant.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
+        return MapSettings(tenant);
+    }
+
+    public async Task<BusinessSettingsResponse> SetOrderingOverrideAsync(int minutes)
+    {
+        var tenantId = _tenantProvider.TenantId
+            ?? throw new UnauthorizedAccessException("No tenant context.");
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.TenantId == tenantId)
+            ?? throw new KeyNotFoundException("Tenant not found.");
+
+        tenant.OrderingOpenUntil = minutes > 0 ? DateTime.UtcNow.AddMinutes(Math.Min(minutes, 24 * 60)) : null;
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
         return MapSettings(tenant);
     }
 
@@ -108,6 +141,27 @@ public class SettingsService : ISettingsService
         SgstPercent = tenant.SgstPercent,
         ServiceChargePercent = tenant.ServiceChargePercent,
         MaxDiscountPercent = tenant.MaxDiscountPercent,
-        SpinWheelEnabled = tenant.SpinWheelEnabled
+        SpinWheelEnabled = tenant.SpinWheelEnabled,
+        LoyaltyDailyEarnCap = tenant.LoyaltyDailyEarnCap,
+        LoyaltyBirthdayBonus = tenant.LoyaltyBirthdayBonus,
+        LoyaltyWelcomeBonus = tenant.LoyaltyWelcomeBonus,
+        LoyaltyExpiryMonths = tenant.LoyaltyExpiryMonths,
+        LoyaltyMaxRedeemPercent = tenant.LoyaltyMaxRedeemPercent,
+        LoyaltyMinRedeemPoints = tenant.LoyaltyMinRedeemPoints,
+        LoyaltyPointValue = tenant.LoyaltyPointValue,
+        LoyaltyPointsPer100 = tenant.LoyaltyPointsPer100,
+        LoyaltyEnabled = tenant.LoyaltyEnabled,
+        HotelModeEnabled = tenant.HotelModeEnabled,
+        OrderingOpenUntil = tenant.OrderingOpenUntil,
+        GeofenceRadiusMeters = tenant.GeofenceRadiusMeters,
+        Longitude = tenant.Longitude,
+        Latitude = tenant.Latitude,
+        LastOrderMinutes = tenant.LastOrderMinutes,
+        QrOrderingHoursEnabled = tenant.QrOrderingHoursEnabled,
+        TakeawayPackingFee = tenant.TakeawayPackingFee,
+        TakeawayEnabled = tenant.TakeawayEnabled,
+        KotCopies = tenant.KotCopies,
+        KotPrintTrigger = tenant.KotPrintTrigger,
+        AutoPrintKot = tenant.AutoPrintKot
     };
 }

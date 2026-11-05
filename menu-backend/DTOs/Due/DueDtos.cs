@@ -18,4 +18,7 @@ public class CustomerDueResponse
 public class SettleDueRequest
 {
     public decimal Amount { get; set; }
+
+    /// <summary>Payment account the money went into (cash, UPI…). Empty = cash.</summary>
+    public string? AccountKey { get; set; }
 }

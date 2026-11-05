@@ -30,7 +30,9 @@ public class OrderController : ControllerBase
         try
         {
             var customerSession = Request.Headers["X-Customer-Session"].FirstOrDefault();
-            var result = await _orderService.CreateOrderAsync(request, tenantId, customerSession);
+            // Staff (waiter screen) may place takeaway orders even when QR takeaway is off
+            var placedByStaff = User.Identity?.IsAuthenticated == true && User.FindFirst("tenant_id")?.Value == tenantId;
+            var result = await _orderService.CreateOrderAsync(request, tenantId, customerSession, placedByStaff);
             return Ok(ApiResponse<OrderResponse>.Ok(result, "Order placed successfully."));
         }
         catch (KeyNotFoundException ex)
@@ -165,7 +167,9 @@ public class OrderController : ControllerBase
         try
         {
             var result = await _orderService.ClearTableAsync(tableId, request);
-            return Ok(ApiResponse<TableSessionSummary>.Ok(result, "Table cleared. All orders marked completed."));
+            return Ok(ApiResponse<TableSessionSummary>.Ok(result, result.ActiveOrderCount > 0
+                ? "Party billed. The table stays open for the others."
+                : "Table cleared. All orders marked completed."));
         }
         catch (KeyNotFoundException ex)
         {
@@ -176,6 +180,53 @@ public class OrderController : ControllerBase
     /// <summary>
     /// Get completed order history filtered by date range. Admin only.
     /// </summary>
+    /// <summary>Bill takeaway orders (by id). They stay on screens until marked picked up.</summary>
+    [HttpPost("settle")]
+    [Authorize(Roles = Roles.Billing)]
+    public async Task<IActionResult> SettleOrders([FromBody] ClearTableRequest request)
+    {
+        try
+        {
+            var result = await _orderService.SettleOrdersAsync(request);
+            return Ok(ApiResponse<TableSessionSummary>.Ok(result, "Bill settled."));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    [HttpGet("takeaway")]
+    [Authorize(Roles = Roles.FloorStaff)]
+    public async Task<IActionResult> GetOpenTakeaway()
+    {
+        var result = await _orderService.GetOpenTakeawayOrdersAsync();
+        return Ok(ApiResponse<List<OrderResponse>>.Ok(result));
+    }
+
+    [HttpPost("{id}/picked-up")]
+    [Authorize(Roles = Roles.FloorStaff)]
+    public async Task<IActionResult> MarkPickedUp(Guid id)
+    {
+        try
+        {
+            var result = await _orderService.MarkPickedUpAsync(id);
+            return Ok(ApiResponse<OrderResponse>.Ok(result, "Order handed over."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+    }
+
     [HttpGet("history")]
     [Authorize(Roles = Roles.Billing)]
     public async Task<IActionResult> GetOrderHistory([FromQuery] DateTime from, [FromQuery] DateTime to)

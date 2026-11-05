@@ -31,6 +31,15 @@ public class RestaurantTable : BaseEntity
     public DateTime? WaiterCalledAt { get; set; }
 
     /// <summary>
+    /// Set when the waiter marks the table done eating ("ready for bill") so the counter can
+    /// spot it and print the bill. Cleared when the bill is settled.
+    /// </summary>
+    public DateTime? BillRequestedAt { get; set; }
+
+    [MaxLength(100)]
+    public string? BillRequestedBy { get; set; }
+
+    /// <summary>
     /// Set while this table is merged into another (the main table). Orders from either
     /// table's QR go on the main table's bill. Cleared when the main table is billed.
     /// </summary>

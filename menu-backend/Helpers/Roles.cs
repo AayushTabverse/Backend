@@ -28,8 +28,14 @@ public static class Roles
     /// <summary>Table reservations: owner and manager.</summary>
     public const string Reservations = Management;
 
+    /// <summary>Hotel reception: rooms, check-in/out and room bills.</summary>
+    public const string FrontDesk = Management + ",FrontDesk";
+
+    /// <summary>Room service delivery queue.</summary>
+    public const string RoomServiceStaff = FrontDesk + ",RoomService";
+
     /// <summary>Any logged-in restaurant staff.</summary>
-    public const string AllStaff = FloorStaff + ",Kitchen";
+    public const string AllStaff = FloorStaff + ",Kitchen,FrontDesk,RoomService";
 
     public static bool IsOwner(UserRole role) =>
         role is UserRole.RestaurantAdmin or UserRole.SuperAdmin;
@@ -41,9 +47,11 @@ public static class Roles
     public static bool CanManage(UserRole actor, UserRole target) => actor switch
     {
         UserRole.SuperAdmin or UserRole.RestaurantAdmin =>
-            target is UserRole.Manager or UserRole.Cashier or UserRole.Captain or UserRole.Waiter or UserRole.Kitchen or UserRole.Helper,
+            target is UserRole.Manager or UserRole.Cashier or UserRole.Captain or UserRole.Waiter or UserRole.Kitchen or UserRole.Helper
+                or UserRole.FrontDesk or UserRole.RoomService,
         UserRole.Manager =>
-            target is UserRole.Cashier or UserRole.Captain or UserRole.Waiter or UserRole.Kitchen or UserRole.Helper,
+            target is UserRole.Cashier or UserRole.Captain or UserRole.Waiter or UserRole.Kitchen or UserRole.Helper
+                or UserRole.FrontDesk or UserRole.RoomService,
         _ => false
     };
 }

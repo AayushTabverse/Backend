@@ -37,6 +37,35 @@ public class SettingsController : ControllerBase
     }
 
     /// <summary>
+    /// "Open now": take QR orders outside opening hours for a while (late party, early opening).
+    /// minutes = 0 goes back to normal hours.
+    /// </summary>
+    [HttpPost("ordering-override")]
+    [Authorize(Roles = Roles.Management)]
+    public async Task<IActionResult> SetOrderingOverride([FromQuery] int minutes)
+    {
+        var result = await _settingsService.SetOrderingOverrideAsync(minutes);
+        return Ok(ApiResponse<BusinessSettingsResponse>.Ok(result,
+            minutes > 0 ? "QR ordering is open." : "QR ordering follows opening hours again."));
+    }
+
+    /// <summary>
+    /// QR for the takeaway counter: customers scan it to order takeaway (/menu/{tenant}/takeaway).
+    /// </summary>
+    [HttpGet("takeaway-qr")]
+    [Authorize(Roles = Roles.Management)]
+    public IActionResult GetTakeawayQr([FromServices] IConfiguration config, [FromServices] menu_backend.Data.ITenantProvider tenantProvider)
+    {
+        var baseUrl = config["App:BaseUrl"] ?? "https://yourapp.com";
+        var url = $"{baseUrl}/menu/{tenantProvider.TenantId}/takeaway";
+
+        using var generator = new QRCoder.QRCodeGenerator();
+        using var data = generator.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.Q);
+        using var qr = new QRCoder.PngByteQRCode(data);
+        return File(qr.GetGraphic(20), "image/png", "takeaway-qr.png");
+    }
+
+    /// <summary>
     /// UPI payment QR for a bill: scanning it opens the customer's UPI app with the amount filled in.
     /// </summary>
     [HttpGet("upi-qr")]

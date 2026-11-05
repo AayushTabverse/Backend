@@ -43,6 +43,13 @@ public class AppDbContext : DbContext
     public DbSet<Reservation> Reservations => Set<Reservation>();
     public DbSet<ReservationTable> ReservationTables => Set<ReservationTable>();
     public DbSet<BillAdjustment> BillAdjustments => Set<BillAdjustment>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<Stay> Stays => Set<Stay>();
+    public DbSet<LoyaltyTransaction> LoyaltyTransactions => Set<LoyaltyTransaction>();
+    public DbSet<VoiceMessage> VoiceMessages => Set<VoiceMessage>();
+    public DbSet<BillPayment> BillPayments => Set<BillPayment>();
+    public DbSet<PurchaseBill> PurchaseBills => Set<PurchaseBill>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -75,6 +82,13 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Reservation>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<ReservationTable>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
         modelBuilder.Entity<BillAdjustment>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<Notification>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<Room>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<Stay>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<LoyaltyTransaction>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<VoiceMessage>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<BillPayment>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
+        modelBuilder.Entity<PurchaseBill>().HasQueryFilter(e => !e.IsDeleted && (_tenantId == null || e.TenantId == _tenantId));
 
         // ── TenantSubscription (not a BaseEntity, separate filter) ──
         modelBuilder.Entity<TenantSubscription>().HasQueryFilter(s => _tenantId == null || s.TenantId == _tenantId);
@@ -327,6 +341,55 @@ public class AppDbContext : DbContext
         {
             entity.Property(e => e.AmountRemoved).HasColumnType("decimal(10,2)");
             entity.HasIndex(e => new { e.TenantId, e.BillNumber });
+        });
+
+        // ── Rooms (hotel) ──
+        modelBuilder.Entity<Room>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.RoomNumber });
+        });
+        modelBuilder.Entity<Stay>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.Status });
+            entity.HasOne(e => e.Room).WithMany(r => r.Stays).HasForeignKey(e => e.RoomId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<Order>().HasIndex(e => e.StayId);
+
+        // ── Loyalty ──
+        modelBuilder.Entity<LoyaltyTransaction>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.CustomerId });
+            entity.HasIndex(e => new { e.TenantId, e.BillNumber });
+            entity.HasOne(e => e.Customer).WithMany().HasForeignKey(e => e.CustomerId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<Customer>().HasIndex(e => new { e.TenantId, e.CustomerMobile });
+        // The MySQL provider can't read a DATE column into DateOnly; go through DateTime
+        modelBuilder.Entity<Customer>().Property(e => e.DateOfBirth)
+            .HasConversion(
+                d => d.HasValue ? d.Value.ToDateTime(TimeOnly.MinValue) : (DateTime?)null,
+                d => d.HasValue ? DateOnly.FromDateTime(d.Value) : (DateOnly?)null)
+            .HasColumnType("date");
+
+        // ── Accounting ──
+        modelBuilder.Entity<BillPayment>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.PaidAt });
+            entity.HasIndex(e => new { e.TenantId, e.BillNumber });
+        });
+        modelBuilder.Entity<PurchaseBill>().HasIndex(e => new { e.TenantId, e.InvoiceDate });
+
+        // ── Walkie-talkie ──
+        modelBuilder.Entity<VoiceMessage>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.CreatedAt });
+            entity.Property(e => e.Audio).HasColumnType("mediumblob");
+        });
+
+        // ── Notification ──
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.HasIndex(e => new { e.TenantId, e.AcknowledgedAt });
+            entity.HasIndex(e => new { e.TenantId, e.DedupKey });
         });
 
         // ── TenantSubscription ──

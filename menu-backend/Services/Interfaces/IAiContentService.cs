@@ -12,4 +12,5 @@ public interface IAiContentService
     Task<List<ContentCalendarResponse>> GetContentCalendarAsync(int month, int year);
     Task<List<SocialConnectionResponse>> GetSocialConnectionsAsync();
     Task DisconnectSocialAsync(string platform);
+
 }

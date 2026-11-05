@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Caching.Memory;
 using menu_backend.Data;
 using menu_backend.DTOs.Order;
+using menu_backend.DTOs.Loyalty;
 using menu_backend.Hubs;
 using menu_backend.Models;
 using menu_backend.Services.Interfaces;
@@ -17,6 +19,14 @@ public class OrderService : IOrderService
     private readonly IPrintService _printService;
     private readonly IInventoryService _inventoryService;
     private readonly IWaitlistService _waitlistService;
+    private readonly OrderingAvailability _ordering;
+    private readonly LoyaltyService _loyalty;
+    private readonly AccountingService _accounting;
+    private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
+
+    /// <summary>Wrong room PINs allowed before that room's QR ordering pauses (stops guessing the 4 digits).</summary>
+    private const int MaxPinTries = 5;
+    private static readonly TimeSpan PinLockout = TimeSpan.FromMinutes(15);
 
     public OrderService(
         AppDbContext db,
@@ -24,8 +34,16 @@ public class OrderService : IOrderService
         IHubContext<OrderHub> hub,
         IPrintService printService,
         IInventoryService inventoryService,
-        IWaitlistService waitlistService)
+        IWaitlistService waitlistService,
+        OrderingAvailability ordering,
+        LoyaltyService loyalty,
+        AccountingService accounting,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
     {
+        _cache = cache;
+        _ordering = ordering;
+        _loyalty = loyalty;
+        _accounting = accounting;
         _db = db;
         _tenantProvider = tenantProvider;
         _hub = hub;
@@ -34,24 +52,73 @@ public class OrderService : IOrderService
         _waitlistService = waitlistService;
     }
 
-    public async Task<OrderResponse> CreateOrderAsync(CreateOrderRequest request, string tenantId, string? customerSessionId = null)
+    public async Task<OrderResponse> CreateOrderAsync(CreateOrderRequest request, string tenantId, string? customerSessionId = null, bool placedByStaff = false)
     {
-        var table = await _db.Tables
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(t => t.Id == request.TableId && t.TenantId == tenantId && !t.IsDeleted)
-            ?? throw new KeyNotFoundException("Table not found.");
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.TenantId == tenantId)
+            ?? throw new KeyNotFoundException("Restaurant not found.");
+        var isTakeaway = string.Equals(request.Type, nameof(OrderType.Takeaway), StringComparison.OrdinalIgnoreCase);
+        var isRoom = string.Equals(request.Type, nameof(OrderType.RoomService), StringComparison.OrdinalIgnoreCase);
 
-        // Merged tables share the main table's bill: only the main table takes orders
-        if (table.MergedIntoTableId != null)
+        // Opening hours and the distance check apply to customers' QR orders, not staff. Room service
+        // is secured by check-in and the room PIN instead (and often runs round the clock).
+        if (!placedByStaff && !isRoom)
+            await _ordering.EnsureCustomerCanOrderAsync(tenant, request.Latitude, request.Longitude, request.LocationAccuracy);
+
+        RestaurantTable? table = null;
+        Room? room = null;
+        Stay? stay = null;
+        if (isRoom)
         {
-            var mainNumber = await _db.Tables
+            if (!tenant.HotelModeEnabled)
+                throw new InvalidOperationException("Room service isn't available.");
+            room = await _db.Rooms.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(r => r.Id == request.RoomId && r.TenantId == tenantId && !r.IsDeleted && r.IsActive)
+                ?? throw new KeyNotFoundException("Room not found.");
+            stay = await ActiveStayAsync(room.Id)
+                ?? throw new InvalidOperationException($"Room {room.RoomNumber} isn't checked in. Please call reception.");
+            if (!placedByStaff && !string.IsNullOrEmpty(stay.Pin))
+            {
+                var key = $"room-pin-fails:{room.Id}";
+                var fails = _cache.TryGetValue(key, out int n) ? n : 0;
+                if (fails >= MaxPinTries)
+                    throw new InvalidOperationException("Too many wrong PINs. Please call reception.");
+                if (stay.Pin != request.RoomPin?.Trim())
+                {
+                    _cache.Set(key, fails + 1, PinLockout);
+                    throw new InvalidOperationException("That room PIN isn't right. It's on your check-in slip, or ask reception.");
+                }
+                _cache.Remove(key);
+            }
+        }
+        else if (isTakeaway)
+        {
+            if (!placedByStaff && !tenant.TakeawayEnabled)
+                throw new InvalidOperationException("This restaurant isn't taking takeaway orders by QR right now. Please order at the counter.");
+            if (!placedByStaff && (string.IsNullOrWhiteSpace(request.CustomerName) || NormalizeMobile(request.CustomerMobile)?.Length != 10))
+                throw new InvalidOperationException("Please enter your name and 10-digit mobile number so we can call you when it's ready.");
+        }
+        else
+        {
+            if (request.TableId == null)
+                throw new InvalidOperationException("Choose a table for this order.");
+
+            table = await _db.Tables
                 .IgnoreQueryFilters()
-                .Where(t => t.Id == table.MergedIntoTableId && t.TenantId == tenantId && !t.IsDeleted)
-                .Select(t => t.TableNumber)
-                .FirstOrDefaultAsync();
-            if (mainNumber != null)
-                throw new InvalidOperationException(
-                    $"Table {table.TableNumber} is joined with Table {mainNumber}. Please place your order from Table {mainNumber}.");
+                .FirstOrDefaultAsync(t => t.Id == request.TableId && t.TenantId == tenantId && !t.IsDeleted)
+                ?? throw new KeyNotFoundException("Table not found.");
+
+            // Merged tables share the main table's bill: only the main table takes orders
+            if (table.MergedIntoTableId != null)
+            {
+                var mainNumber = await _db.Tables
+                    .IgnoreQueryFilters()
+                    .Where(t => t.Id == table.MergedIntoTableId && t.TenantId == tenantId && !t.IsDeleted)
+                    .Select(t => t.TableNumber)
+                    .FirstOrDefaultAsync();
+                if (mainNumber != null)
+                    throw new InvalidOperationException(
+                        $"Table {table.TableNumber} is joined with Table {mainNumber}. Please place your order from Table {mainNumber}.");
+            }
         }
 
         // Generate order number: ORD-YYYYMMDD-XXXX (restaurant-local day)
@@ -67,13 +134,29 @@ public class OrderService : IOrderService
         {
             TenantId = tenantId,
             OrderNumber = orderNumber,
-            TableId = table.Id,
+            TableId = table?.Id,
+            Type = isRoom ? OrderType.RoomService : isTakeaway ? OrderType.Takeaway : OrderType.DineIn,
+            RoomId = room?.Id,
+            StayId = stay?.Id,
+            ChargeToRoom = isRoom && request.ChargeToRoom,
             Status = OrderStatus.Pending,
             SpecialInstructions = request.SpecialInstructions,
-            CustomerSessionId = customerSessionId
+            CustomerSessionId = customerSessionId,
+            CustomerName = stay?.GuestName ?? (string.IsNullOrWhiteSpace(request.CustomerName) ? null : request.CustomerName.Trim()),
+            CustomerMobile = stay?.GuestMobile ?? NormalizeMobile(request.CustomerMobile),
+            TokenNumber = room?.RoomNumber,
+            PackingFee = isTakeaway ? tenant.TakeawayPackingFee : 0
         };
 
-        decimal subTotal = 0;
+        if (isTakeaway)
+        {
+            // Pickup token, restarting daily: T-001, T-002…
+            var takeawaysToday = await _db.Orders
+                .IgnoreQueryFilters()
+                .CountAsync(o => o.TenantId == tenantId && o.Type == OrderType.Takeaway && o.CreatedAt >= dayStart && o.CreatedAt < dayEnd);
+            order.TokenNumber = $"T-{(takeawaysToday + 1):D3}";
+        }
+
         int maxPrepTime = 0;
 
         foreach (var itemReq in request.Items)
@@ -86,8 +169,7 @@ public class OrderService : IOrderService
             if (!menuItem.IsAvailable)
                 throw new InvalidOperationException($"'{menuItem.Name}' is currently unavailable.");
 
-            var totalPrice = menuItem.Price * itemReq.Quantity;
-            subTotal += totalPrice;
+            var isParcel = isTakeaway || itemReq.IsParcel;
             maxPrepTime = Math.Max(maxPrepTime, menuItem.PreparationTimeMinutes);
 
             order.Items.Add(new OrderItem
@@ -97,30 +179,72 @@ public class OrderService : IOrderService
                 ItemName = menuItem.Name,
                 Quantity = itemReq.Quantity,
                 UnitPrice = menuItem.Price,
-                TotalPrice = totalPrice,
+                TotalPrice = menuItem.Price * itemReq.Quantity,
+                IsParcel = isParcel,
+                PackagingCharge = isParcel ? menuItem.PackagingCharge : 0,
                 Modifiers = itemReq.Modifiers,
                 Notes = itemReq.Notes
             });
         }
 
-        order.SubTotal = subTotal;
-        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.TenantId == tenantId);
-        var taxRate = tenant != null ? (tenant.CgstPercent + tenant.SgstPercent + tenant.ServiceChargePercent) / 100m : 0.05m;
-        order.Tax = Math.Round(subTotal * taxRate, 2);
-        order.TotalAmount = order.SubTotal + order.Tax;
+        ApplyTotals(order, TaxRate(tenant), subtractDiscount: false);
         order.EstimatedMinutes = maxPrepTime + 5; // buffer
 
         _db.Orders.Add(order);
         await _db.SaveChangesAsync();
 
-        // Create print job
-        await _printService.CreatePrintJobAsync(order.Id, tenantId);
+        await _printService.QueueKotAsync(order.Id, tenantId, "OnOrder");
 
         // Notify kitchen via SignalR
-        var response = MapOrder(order, table.TableNumber);
+        var response = MapOrder(order, table?.TableNumber ?? "");
         await _hub.Clients.Group(tenantId).SendAsync("NewOrder", response);
+        // The table may have just become occupied
+        if (table != null)
+            await _hub.Clients.Group($"waitlist-queue-{tenantId}").SendAsync("TableBoardChanged");
 
         return response;
+    }
+
+    private Task<Stay?> ActiveStayAsync(Guid roomId) =>
+        _db.Stays.IgnoreQueryFilters()
+            .Where(s => s.RoomId == roomId && !s.IsDeleted && s.Status == StayStatus.Active)
+            .OrderByDescending(s => s.CheckInAt)
+            .FirstOrDefaultAsync();
+
+    private static decimal TaxRate(Tenant? tenant) =>
+        tenant != null ? (tenant.CgstPercent + tenant.SgstPercent + tenant.ServiceChargePercent) / 100m : 0.05m;
+
+    /// <summary>
+    /// Food subtotal, packing (parcel items + flat takeaway fee) and tax on both — packing is part
+    /// of the taxable sale. <paramref name="subtractDiscount"/> takes DiscountAmount off the total.
+    /// </summary>
+    private static void ApplyTotals(Order order, decimal taxRate, bool subtractDiscount)
+    {
+        order.SubTotal = order.Items.Sum(i => i.TotalPrice);
+        order.PackagingCharge = order.Items.Count == 0 ? 0
+            : order.Items.Sum(i => i.PackagingCharge * i.Quantity) + order.PackingFee;
+        // Loyalty points come off before tax; never more than what's left on the order
+        order.LoyaltyDiscount = Math.Min(order.LoyaltyDiscount, order.SubTotal + order.PackagingCharge);
+        var taxable = order.SubTotal + order.PackagingCharge - order.LoyaltyDiscount;
+        order.Tax = Math.Round(taxable * taxRate, 2);
+        order.TotalAmount = taxable + order.Tax - (subtractDiscount ? order.DiscountAmount : 0);
+    }
+
+    private static string? NormalizeMobile(string? mobile)
+    {
+        if (string.IsNullOrWhiteSpace(mobile)) return null;
+        var digits = new string(mobile.Where(char.IsDigit).ToArray());
+        return digits.Length > 10 ? digits[^10..] : digits;
+    }
+
+    /// <summary>
+    /// Staff screens get every order change on the tenant group; the customer gets their own
+    /// order's changes on its order group (order tracking and the table's menu page follow it).
+    /// </summary>
+    private async Task BroadcastOrderUpdatedAsync(OrderResponse response, string tenantId)
+    {
+        await _hub.Clients.Group(tenantId).SendAsync("OrderStatusUpdated", response);
+        await _hub.Clients.Group($"order-{response.Id}").SendAsync("OrderStatusUpdated", response);
     }
 
     public async Task<OrderResponse?> GetOrderAsync(Guid id)
@@ -170,8 +294,10 @@ public class OrderService : IOrderService
 
         var response = MapOrder(order, order.Table?.TableNumber ?? "");
 
-        // Notify all connected clients
-        await _hub.Clients.Group(order.TenantId).SendAsync("OrderStatusUpdated", response);
+        await BroadcastOrderUpdatedAsync(response, order.TenantId);
+
+        if (status == OrderStatus.Accepted)
+            await _printService.QueueKotAsync(order.Id, order.TenantId, "OnAccept");
 
         // Sound alert on kitchen for specific statuses
         if (status == OrderStatus.Accepted || status == OrderStatus.Ready)
@@ -204,10 +330,119 @@ public class OrderService : IOrderService
         };
     }
 
+    public async Task<List<OrderResponse>> GetOpenTakeawayOrdersAsync()
+    {
+        var orders = await GetFullOrderQuery()
+            .Where(o => o.Type == OrderType.Takeaway
+                        && o.Status != OrderStatus.Completed && o.Status != OrderStatus.Cancelled)
+            .OrderBy(o => o.CreatedAt)
+            .ToListAsync();
+        return orders.Select(o => MapOrder(o, "")).ToList();
+    }
+
+    // ── Room service ──
+
+    public async Task<List<OrderResponse>> GetRoomServiceQueueAsync()
+    {
+        var orders = await GetFullOrderQuery()
+            .Where(o => o.Type == OrderType.RoomService
+                        && o.Status != OrderStatus.Completed && o.Status != OrderStatus.Cancelled)
+            .OrderBy(o => o.CreatedAt)
+            .ToListAsync();
+        return orders.Select(o => MapOrder(o, "")).ToList();
+    }
+
+    public async Task<List<OrderResponse>> GetStayOrdersAsync(Guid stayId)
+    {
+        var orders = await GetFullOrderQuery()
+            .Where(o => o.StayId == stayId && o.Status != OrderStatus.Cancelled)
+            .OrderBy(o => o.CreatedAt)
+            .ToListAsync();
+        return orders.Select(o => MapOrder(o, "")).ToList();
+    }
+
+    /// <summary>Attendant took the order from the kitchen: it leaves the kitchen screen.</summary>
+    public async Task<OrderResponse> DispatchRoomOrderAsync(Guid orderId)
+    {
+        var order = await LoadRoomOrderAsync(orderId);
+        if (order.DispatchedAt != null) return MapOrder(order, "");
+
+        var now = DateTime.UtcNow;
+        var deduct = order.ServedAt == null;
+        order.DispatchedAt = now;
+        order.ServedAt ??= now;
+        order.PreparedAt ??= now;
+        order.Status = OrderStatus.Served;
+        await _db.SaveChangesAsync();
+
+        if (deduct)
+        {
+            try { await _inventoryService.DeductForOrderAsync(order.Id); }
+            catch (Exception ex) { Console.WriteLine($"[Inventory] Deduction failed for order {order.Id}: {ex.Message}"); }
+        }
+
+        var response = MapOrder(order, "");
+        await BroadcastOrderUpdatedAsync(response, order.TenantId);
+        return response;
+    }
+
+    /// <summary>
+    /// Handed to the guest. Room-bill orders (and ones already paid) are done; pay-on-delivery ones
+    /// stay open until the attendant's payment is billed.
+    /// </summary>
+    public async Task<OrderResponse> DeliverRoomOrderAsync(Guid orderId)
+    {
+        var order = await LoadRoomOrderAsync(orderId);
+        if (order.DispatchedAt == null)
+            await DispatchRoomOrderAsync(orderId);
+
+        order.DeliveredAt ??= DateTime.UtcNow;
+        if (order.ChargeToRoom || order.BillNumber != null)
+        {
+            order.Status = OrderStatus.Completed;
+            order.CompletedAt ??= order.DeliveredAt;
+        }
+        await _db.SaveChangesAsync();
+
+        var response = MapOrder(order, "");
+        await BroadcastOrderUpdatedAsync(response, order.TenantId);
+        return response;
+    }
+
+    private async Task<Order> LoadRoomOrderAsync(Guid orderId)
+    {
+        var order = await GetFullOrderQuery().FirstOrDefaultAsync(o => o.Id == orderId)
+            ?? throw new KeyNotFoundException("Order not found.");
+        if (order.Type != OrderType.RoomService)
+            throw new InvalidOperationException("Not a room service order.");
+        if (order.Status == OrderStatus.Cancelled)
+            throw new InvalidOperationException("This order was cancelled.");
+        return order;
+    }
+
+    /// <summary>
+    /// Checkout: one bill for everything the stay still owes (room charges and any unpaid room
+    /// service). Null when there's nothing to bill.
+    /// </summary>
+    public async Task<TableSessionSummary?> SettleStayAsync(Guid stayId, ClearTableRequest request)
+    {
+        var orders = await _db.Orders
+            .Include(o => o.Items)
+            .Where(o => o.StayId == stayId && o.BillNumber == null && o.Status != OrderStatus.Cancelled)
+            .ToListAsync();
+        if (orders.Count == 0) return null;
+
+        var (billNumber, paidAmount, dueAmount, loyalty) = await SettleAsync(orders, request, orders[0].TenantId, completeOrders: true);
+        foreach (var o in orders)
+            await BroadcastOrderUpdatedAsync(MapOrder(o, ""), o.TenantId);
+        return await BuildSettledSummaryAsync(billNumber, null, paidAmount, dueAmount, 0, loyalty);
+    }
+
     public async Task<LiveOrdersResponse> GetKitchenOrdersAsync()
     {
         var kitchenStatuses = new[]
         {
+            OrderStatus.Pending,
             OrderStatus.Accepted,
             OrderStatus.Preparing,
             OrderStatus.Ready
@@ -264,7 +499,8 @@ public class OrderService : IOrderService
     {
         Id = order.Id,
         OrderNumber = order.OrderNumber,
-        TableNumber = tableNumber,
+        // Takeaway/room orders have no table: show their token instead
+        TableNumber = order.TableId == null ? (order.TokenNumber ?? tableNumber) : tableNumber,
         TableId = order.TableId,
         Status = order.Status.ToString(),
         Type = order.Type.ToString(),
@@ -281,6 +517,17 @@ public class OrderService : IOrderService
         CompletedAt = order.CompletedAt,
         BillNumber = order.BillNumber,
         CustomerSessionId = order.CustomerSessionId,
+        PackagingCharge = order.PackagingCharge,
+        LoyaltyDiscount = order.LoyaltyDiscount,
+        TokenNumber = order.TokenNumber,
+        CustomerName = order.CustomerName,
+        CustomerMobile = order.CustomerMobile,
+        PickedUpAt = order.PickedUpAt,
+        RoomId = order.RoomId,
+        StayId = order.StayId,
+        ChargeToRoom = order.ChargeToRoom,
+        DispatchedAt = order.DispatchedAt,
+        DeliveredAt = order.DeliveredAt,
         Items = order.Items.Select(i => new OrderItemResponse
         {
             Id = i.Id,
@@ -290,7 +537,9 @@ public class OrderService : IOrderService
             UnitPrice = i.UnitPrice,
             TotalPrice = i.TotalPrice,
             Modifiers = i.Modifiers,
-            Notes = i.Notes
+            Notes = i.Notes,
+            IsParcel = i.IsParcel,
+            PackagingCharge = i.PackagingCharge
         }).ToList(),
         Payment = order.Payment != null ? new PaymentSummary
         {
@@ -328,6 +577,8 @@ public class OrderService : IOrderService
             TableLabel = table.Label,
             ActiveOrderCount = mapped.Count,
             GrandSubTotal = mapped.Sum(o => o.SubTotal),
+            GrandPackaging = mapped.Sum(o => o.PackagingCharge),
+            GrandLoyaltyDiscount = mapped.Sum(o => o.LoyaltyDiscount),
             GrandTax = mapped.Sum(o => o.Tax),
             GrandDiscount = mapped.Sum(o => o.DiscountAmount),
             GrandTotal = mapped.Sum(o => o.TotalAmount),
@@ -353,28 +604,159 @@ public class OrderService : IOrderService
             ?? throw new KeyNotFoundException("Table not found.");
 
         var activeOrders = await _db.Orders
+            .Include(o => o.Items)
             .Where(o => o.TableId == tableId && ActiveStatuses.Contains(o.Status))
             .ToListAsync();
 
-        // Generate bill number: BILL-YYYYMMDD-XXXX (restaurant-local day)
-        var today = BusinessClock.Today.ToString("yyyyMMdd");
-        var billCount = await _db.Orders
-            .IgnoreQueryFilters()
-            .Where(o => o.TenantId == table.TenantId && o.BillNumber != null)
-            .Select(o => o.BillNumber)
-            .Distinct()
-            .CountAsync();
-        var billNumber = $"BILL-{today}-{(billCount + 1):D4}";
+        // Billing one party at a shared table: only their orders
+        if (request.OrderIds is { Count: > 0 })
+        {
+            activeOrders = activeOrders.Where(o => request.OrderIds.Contains(o.Id)).ToList();
+            if (activeOrders.Count == 0)
+                throw new InvalidOperationException("These orders are already billed.");
+        }
+
+        var (billNumber, paidAmount, dueAmount, loyalty) = await SettleAsync(activeOrders, request, table.TenantId, completeOrders: true);
+
+        var anyLeft = await _db.Orders.AnyAsync(o => o.TableId == tableId && ActiveStatuses.Contains(o.Status));
+        table.BillRequestedAt = null;
+        table.BillRequestedBy = null;
+
+        if (!anyLeft)
+        {
+            table.IsCallingWaiter = false;
+            table.WaiterCalledAt = null;
+            await _db.SaveChangesAsync();
+
+            // Free the waitlist party seated here, and un-merge tables merged into this one
+            await _waitlistService.ReleaseTableAsync(tableId);
+            var merged = await _db.Tables.Where(t => t.MergedIntoTableId == tableId).ToListAsync();
+            if (merged.Count > 0)
+            {
+                foreach (var t in merged) t.MergedIntoTableId = null;
+                await _db.SaveChangesAsync();
+            }
+
+            // Staff screens, plus customers still on the menu at this table (or a table merged into it)
+            await _hub.Clients.Group(table.TenantId)
+                .SendAsync("TableCleared", tableId.ToString(), table.TableNumber);
+            await _hub.Clients.Groups(merged.Select(t => $"table-{t.Id}").Append($"table-{tableId}").ToList())
+                .SendAsync("TableSessionEnded");
+        }
+        else
+        {
+            // Other parties are still eating: only the billed party's phones end their session
+            await _db.SaveChangesAsync();
+            var sessions = activeOrders.Select(o => o.CustomerSessionId).OfType<string>().Distinct().ToList();
+            var mergedIds = await _db.Tables.Where(t => t.MergedIntoTableId == tableId).Select(t => t.Id).ToListAsync();
+            if (sessions.Count > 0)
+                await _hub.Clients.Groups(mergedIds.Select(id => $"table-{id}").Append($"table-{tableId}").ToList())
+                    .SendAsync("PartySettled", sessions);
+        }
+        await _hub.BroadcastTablesChangedAsync(table.TenantId);
+
+        return await BuildSettledSummaryAsync(billNumber, table, paidAmount, dueAmount, anyLeft ? await CountActiveAsync(tableId) : 0, loyalty);
+    }
+
+    public async Task<TableSessionSummary> SettleOrdersAsync(ClearTableRequest request)
+    {
+        if (request.OrderIds is not { Count: > 0 })
+            throw new ArgumentException("Choose the orders to bill.");
+
+        // Unbilled table-less orders are few; filter the ids in memory (the MySQL provider can't translate list Contains)
+        var orders = (await _db.Orders
+            .Include(o => o.Items)
+            .Where(o => o.TableId == null && o.BillNumber == null && o.Status != OrderStatus.Cancelled)
+            .ToListAsync())
+            .Where(o => request.OrderIds.Contains(o.Id))
+            .ToList();
+        if (orders.Count == 0)
+            throw new InvalidOperationException("These orders are already billed.");
+
+        // Takeaway is usually paid before it's cooked: billing doesn't close the order; pickup does
+        var (billNumber, paidAmount, dueAmount, loyalty) = await SettleAsync(orders, request, orders[0].TenantId, completeOrders: false);
+
+        // Room service paid on delivery: once it's delivered and paid, it's done
+        var delivered = orders.Where(o => o.Type == OrderType.RoomService && o.DeliveredAt != null).ToList();
+        foreach (var o in delivered) o.Status = OrderStatus.Completed;
+        if (delivered.Count > 0) await _db.SaveChangesAsync();
+
+        foreach (var o in orders)
+            await BroadcastOrderUpdatedAsync(MapOrder(o, ""), o.TenantId);
+
+        return await BuildSettledSummaryAsync(billNumber, null, paidAmount, dueAmount, 0, loyalty);
+    }
+
+    public async Task<OrderResponse> MarkPickedUpAsync(Guid orderId)
+    {
+        var order = await GetFullOrderQuery().FirstOrDefaultAsync(o => o.Id == orderId)
+            ?? throw new KeyNotFoundException("Order not found.");
+        if (order.Type != OrderType.Takeaway)
+            throw new InvalidOperationException("Only takeaway orders are picked up.");
+        if (order.BillNumber == null)
+            throw new InvalidOperationException("Settle the bill before handing over the order.");
+        if (order.Status == OrderStatus.Cancelled)
+            throw new InvalidOperationException("This order was cancelled.");
 
         var now = DateTime.UtcNow;
+        var deduct = order.ServedAt == null && order.Status != OrderStatus.Completed;
+        order.PickedUpAt = now;
+        order.ServedAt ??= now;
+        order.Status = OrderStatus.Completed;
+        await _db.SaveChangesAsync();
+
+        if (deduct)
+        {
+            try { await _inventoryService.DeductForOrderAsync(order.Id); }
+            catch (Exception ex) { Console.WriteLine($"[Inventory] Deduction failed for order {order.Id}: {ex.Message}"); }
+        }
+
+        var response = MapOrder(order, "");
+        await BroadcastOrderUpdatedAsync(response, order.TenantId);
+        return response;
+    }
+
+    private Task<int> CountActiveAsync(Guid tableId) =>
+        _db.Orders.CountAsync(o => o.TableId == tableId && ActiveStatuses.Contains(o.Status));
+
+    /// <summary>
+    /// Gives the orders one bill number and applies the discount, payment, udhaar and customer
+    /// record. <paramref name="completeOrders"/>: dine-in bills close the orders (and use up stock
+    /// for anything not served yet); takeaway bills leave them open until pickup.
+    /// </summary>
+    private async Task<(string BillNumber, decimal PaidAmount, decimal DueAmount, LoyaltyOutcome? Loyalty)> SettleAsync(
+        List<Order> orders, ClearTableRequest request, string tenantId, bool completeOrders)
+    {
+        var billNumber = await NextBillNumberAsync(tenantId);
+        var now = DateTime.UtcNow;
+        var tenant = await _db.Tenants.FirstAsync(t => t.TenantId == tenantId);
+
+        var customerName = request.CustomerName ?? orders.Select(o => o.CustomerName).FirstOrDefault(n => n != null);
+        var customerMobile = request.CustomerMobile ?? orders.Select(o => o.CustomerMobile).FirstOrDefault(m => m != null);
+
+        // Customer record (visit stats, loyalty) for anyone billed with a mobile number
+        var customer = (tenant.LoyaltyEnabled || !string.IsNullOrWhiteSpace(customerName))
+            ? await _loyalty.FindOrCreateAsync(tenantId, customerName, customerMobile, request.CustomerDateOfBirth)
+            : null;
+
+        // Loyalty points come off before tax (they reduce the taxable value)
+        var redeemed = (Points: 0, Value: 0m);
+        if (request.RedeemPoints > 0)
+        {
+            if (customer == null)
+                throw new InvalidOperationException("Enter the customer's mobile number to use their points.");
+            var preTax = orders.Sum(o => o.SubTotal + o.PackagingCharge - o.LoyaltyDiscount);
+            redeemed = _loyalty.PlanRedemption(tenant, customer, request.RedeemPoints, preTax);
+            ApplyPreTaxDiscount(orders, redeemed.Value);
+        }
 
         // Distribute discount proportionally across orders
-        var totalBeforeDiscount = activeOrders.Sum(o => o.TotalAmount);
+        var totalBeforeDiscount = orders.Sum(o => o.TotalAmount);
         var discount = Math.Max(0, Math.Min(request.DiscountAmount, totalBeforeDiscount));
 
-        foreach (var order in activeOrders)
+        foreach (var order in orders)
         {
-            order.Status = OrderStatus.Completed;
+            if (completeOrders) order.Status = OrderStatus.Completed;
             order.CompletedAt = now;
             order.UpdatedAt = now;
             order.BillNumber = billNumber;
@@ -390,17 +772,26 @@ public class OrderService : IOrderService
         }
 
         // Handle partial payment / dues (udhaar)
-        var finalTotal = activeOrders.Sum(o => o.TotalAmount);
-        var paidAmount = request.PaidAmount > 0 ? Math.Min(request.PaidAmount, finalTotal) : finalTotal;
+        var finalTotal = orders.Sum(o => o.TotalAmount);
+        // A payment split (cash/UPI/card…) says exactly what was paid now; the rest is udhaar
+        var splitTotal = request.Payments?.Where(p => p.Amount > 0).Sum(p => p.Amount) ?? 0;
+        if (splitTotal > finalTotal + 1)
+            throw new InvalidOperationException($"Payments (₹{splitTotal:0.##}) are more than the bill (₹{finalTotal:0.##}).");
+        var paidAmount = splitTotal > 0 ? Math.Min(splitTotal, finalTotal)
+            : request.PaidAmount > 0 ? Math.Min(request.PaidAmount, finalTotal) : finalTotal;
         var dueAmount = finalTotal - paidAmount;
+        if (dueAmount > 0.01m && string.IsNullOrWhiteSpace(customerName))
+            throw new InvalidOperationException("Enter the customer's name to put the rest on udhaar.");
+        if (paidAmount > 0)
+            _accounting.RecordBillPayments(tenant, billNumber, splitTotal > 0 ? request.Payments : null, paidAmount);
 
-        if (dueAmount > 0 && !string.IsNullOrWhiteSpace(request.CustomerName))
+        if (dueAmount > 0 && !string.IsNullOrWhiteSpace(customerName))
         {
             _db.CustomerDues.Add(new Models.CustomerDue
             {
-                TenantId = table.TenantId,
-                CustomerName = request.CustomerName.Trim(),
-                CustomerMobile = request.CustomerMobile?.Trim(),
+                TenantId = tenantId,
+                CustomerName = customerName.Trim(),
+                CustomerMobile = customerMobile?.Trim(),
                 BillNumber = billNumber,
                 BillAmount = finalTotal,
                 PaidAmount = paidAmount,
@@ -409,81 +800,123 @@ public class OrderService : IOrderService
             });
         }
 
-        // Save customer record when both name and mobile are provided
-        if (!string.IsNullOrWhiteSpace(request.CustomerName) && !string.IsNullOrWhiteSpace(request.CustomerMobile))
+        LoyaltyOutcome? loyalty = null;
+        if (customer != null)
         {
-            var mobile = request.CustomerMobile.Trim();
-            var existingCustomer = await _db.Customers
-                .FirstOrDefaultAsync(c => c.CustomerMobile == mobile);
-            if (existingCustomer != null)
-            {
-                existingCustomer.CustomerName = request.CustomerName.Trim();
-                existingCustomer.UpdatedAt = DateTime.UtcNow;
-            }
-            else
-            {
-                _db.Customers.Add(new Models.Customer
+            if (redeemed.Points > 0) _loyalty.RecordRedemption(customer, redeemed.Points, billNumber);
+            // Earn on the paid part, before tax; the udhaar part earns when it's paid
+            var (earned, bonus) = await _loyalty.EarnAsync(tenant, customer, paidAmount * PreTaxShare(orders), billNumber);
+            LoyaltyService.RecordVisit(customer, finalTotal);
+            if (tenant.LoyaltyEnabled)
+                loyalty = new LoyaltyOutcome
                 {
-                    TenantId = table.TenantId,
-                    CustomerName = request.CustomerName.Trim(),
-                    CustomerMobile = mobile
-                });
-            }
+                    PointsRedeemed = redeemed.Points, RedeemedValue = redeemed.Value,
+                    PointsEarned = earned, BonusPoints = bonus, Balance = customer.PointsBalance
+                };
         }
 
         await _db.SaveChangesAsync();
 
         // Auto-deduct inventory for orders that weren't already deducted at Served status
-        foreach (var order in activeOrders.Where(o => o.ServedAt == null))
+        if (completeOrders)
         {
-            try { await _inventoryService.DeductForOrderAsync(order.Id); }
-            catch (Exception ex) { Console.WriteLine($"[Inventory] Deduction failed for order {order.Id}: {ex.Message}"); }
+            foreach (var order in orders.Where(o => o.ServedAt == null))
+            {
+                try { await _inventoryService.DeductForOrderAsync(order.Id); }
+                catch (Exception ex) { Console.WriteLine($"[Inventory] Deduction failed for order {order.Id}: {ex.Message}"); }
+            }
         }
 
-        // Return final summary (all now completed — return them so UI can show the bill)
-        var completed = await GetFullOrderQuery()
-            .Where(o => o.TableId == tableId && o.CompletedAt == now)
+        return (billNumber, paidAmount, dueAmount, loyalty);
+    }
+
+    /// <summary>Takes <paramref name="value"/> off the orders' taxable amount (shared in proportion), re-taxing each.</summary>
+    private static void ApplyPreTaxDiscount(List<Order> orders, decimal value)
+    {
+        var bases = orders.Select(o => o.SubTotal + o.PackagingCharge - o.LoyaltyDiscount).ToList();
+        var total = bases.Sum();
+        if (total <= 0 || value <= 0) return;
+
+        var left = value;
+        for (var i = 0; i < orders.Count; i++)
+        {
+            var o = orders[i];
+            var share = i == orders.Count - 1 ? left : Math.Round(value * bases[i] / total, 2);
+            share = Math.Min(share, bases[i]);
+            left -= share;
+
+            var rate = bases[i] > 0 ? o.Tax / bases[i] : 0m;
+            o.LoyaltyDiscount += share;
+            var taxable = bases[i] - share;
+            o.Tax = Math.Round(taxable * rate, 2);
+            o.TotalAmount = taxable + o.Tax - o.DiscountAmount;
+        }
+    }
+
+    /// <summary>Part of the orders' total that is before tax (points are earned on that part).</summary>
+    private static decimal PreTaxShare(List<Order> orders)
+    {
+        var preTax = orders.Sum(o => o.SubTotal + o.PackagingCharge - o.LoyaltyDiscount);
+        var withTax = preTax + orders.Sum(o => o.Tax);
+        return withTax > 0 ? preTax / withTax : 1m;
+    }
+
+    /// <summary>BILL-YYYYMMDD-XXXX (restaurant-local day; the sequence runs across days).</summary>
+    private async Task<string> NextBillNumberAsync(string tenantId)
+    {
+        var today = BusinessClock.Today.ToString("yyyyMMdd");
+        var billCount = await _db.Orders
+            .IgnoreQueryFilters()
+            .Where(o => o.TenantId == tenantId && o.BillNumber != null)
+            .Select(o => o.BillNumber)
+            .Distinct()
+            .CountAsync();
+        return $"BILL-{today}-{(billCount + 1):D4}";
+    }
+
+    /// <summary>The just-settled bill, shaped like a table session so the bill screen can print it.</summary>
+    private async Task<TableSessionSummary> BuildSettledSummaryAsync(
+        string billNumber, RestaurantTable? table, decimal paidAmount, decimal dueAmount, int stillActive, LoyaltyOutcome? loyalty = null)
+    {
+        var billed = await GetFullOrderQuery()
+            .Where(o => o.BillNumber == billNumber)
             .OrderBy(o => o.CreatedAt)
             .ToListAsync();
-
-        var mapped = completed.Select(o => MapOrder(o, table.TableNumber)).ToList();
-
-        // Notify via SignalR
-        await _hub.Clients.Group(table.TenantId)
-            .SendAsync("TableCleared", tableId.ToString(), table.TableNumber);
-
-        // Free the waitlist party seated here, and un-merge tables merged into this one
-        await _waitlistService.ReleaseTableAsync(tableId);
-        var merged = await _db.Tables.Where(t => t.MergedIntoTableId == tableId).ToListAsync();
-        if (merged.Count > 0)
-        {
-            foreach (var t in merged) t.MergedIntoTableId = null;
-            await _db.SaveChangesAsync();
-            await _hub.Clients.Group(table.TenantId).SendAsync("TablesChanged");
-        }
+        var mapped = billed.Select(o => MapOrder(o, table?.TableNumber ?? "")).ToList();
 
         return new TableSessionSummary
         {
-            TableId = table.Id,
-            TableNumber = table.TableNumber,
-            TableLabel = table.Label,
-            ActiveOrderCount = 0,
+            TableId = table?.Id,
+            TableNumber = table?.TableNumber ?? (mapped.FirstOrDefault()?.TableNumber ?? ""),
+            TableLabel = table?.Label,
+            ActiveOrderCount = stillActive,
             GrandSubTotal = mapped.Sum(o => o.SubTotal),
+            GrandPackaging = mapped.Sum(o => o.PackagingCharge),
+            GrandLoyaltyDiscount = mapped.Sum(o => o.LoyaltyDiscount),
             GrandTax = mapped.Sum(o => o.Tax),
             GrandDiscount = mapped.Sum(o => o.DiscountAmount),
             GrandTotal = mapped.Sum(o => o.TotalAmount),
             PaidAmount = paidAmount,
             DueAmount = dueAmount,
-            Orders = mapped
+            Orders = mapped,
+            Loyalty = loyalty
         };
     }
+
+    /// <summary>What a table-less bill is "for" on the bill list: the takeaway token or room.</summary>
+    private static string BillLabel(Order o) => o.Type switch
+    {
+        OrderType.Takeaway => $"Takeaway {o.TokenNumber}".Trim(),
+        OrderType.RoomService => $"Room {o.TokenNumber}".Trim(),
+        _ => o.TokenNumber ?? ""
+    };
 
     public async Task<BillResponse> GetBillAsync(string billNumber)
     {
         var orders = await _db.Orders
             .Include(o => o.Items)
             .Include(o => o.Table)
-            .Where(o => o.BillNumber == billNumber && o.Status == OrderStatus.Completed)
+            .Where(o => o.BillNumber == billNumber && o.Status != OrderStatus.Cancelled)
             .OrderBy(o => o.CreatedAt)
             .ToListAsync();
         if (orders.Count == 0)
@@ -496,15 +929,20 @@ public class OrderService : IOrderService
             .ToListAsync();
         var table = orders[0].Table;
         var total = orders.Sum(o => o.TotalAmount);
+        var points = await _db.LoyaltyTransactions.Where(t => t.BillNumber == billNumber).ToListAsync();
 
         return new BillResponse
         {
             BillNumber = billNumber,
-            TableNumber = table?.TableNumber ?? "",
+            TableNumber = table?.TableNumber ?? BillLabel(orders[0]),
             TableLabel = table?.Label,
             OrderCount = orders.Count,
             TotalItems = orders.Sum(o => o.Items.Count),
             SubTotal = orders.Sum(o => o.SubTotal),
+            PackagingCharge = orders.Sum(o => o.PackagingCharge),
+            LoyaltyDiscount = orders.Sum(o => o.LoyaltyDiscount),
+            PointsEarned = points.Where(p => p.Points > 0).Sum(p => p.Points),
+            PointsRedeemed = -points.Where(p => p.Type == LoyaltyTransactionType.Redeem).Sum(p => p.Points),
             Tax = orders.Sum(o => o.Tax),
             DiscountAmount = orders.Sum(o => o.DiscountAmount),
             TotalAmount = total,
@@ -522,7 +960,7 @@ public class OrderService : IOrderService
     {
         var orders = await _db.Orders
             .Include(o => o.Items)
-            .Where(o => o.BillNumber == billNumber && o.Status == OrderStatus.Completed)
+            .Where(o => o.BillNumber == billNumber && o.Status != OrderStatus.Cancelled)
             .ToListAsync();
         if (orders.Count == 0)
             throw new KeyNotFoundException("Bill not found.");
@@ -555,14 +993,15 @@ public class OrderService : IOrderService
             if (orderRemovals.Count == 0) continue;
 
             // Keep the tax rate the bill was charged at (settings may have changed since)
-            var taxRate = order.SubTotal > 0 ? order.Tax / order.SubTotal : 0m;
+            var taxable = order.SubTotal + order.PackagingCharge - order.LoyaltyDiscount;
+            var taxRate = taxable > 0 ? order.Tax / taxable : 0m;
             var discount = order.DiscountAmount;
 
             foreach (var (itemId, quantity) in orderRemovals)
             {
                 var item = order.Items.First(i => i.Id == itemId);
                 var lineUnit = item.Quantity > 0 ? item.TotalPrice / item.Quantity : item.UnitPrice;
-                var removedValue = Math.Round(lineUnit * quantity, 2);
+                var removedValue = Math.Round((lineUnit + item.PackagingCharge) * quantity, 2);
 
                 _db.BillAdjustments.Add(new BillAdjustment
                 {
@@ -590,10 +1029,9 @@ public class OrderService : IOrderService
                 }
             }
 
-            order.SubTotal = order.Items.Sum(i => i.TotalPrice);
-            order.Tax = Math.Round(order.SubTotal * taxRate, 2);
-            order.DiscountAmount = Math.Min(discount, order.SubTotal + order.Tax);
-            order.TotalAmount = order.SubTotal + order.Tax - order.DiscountAmount;
+            ApplyTotals(order, taxRate, subtractDiscount: false);
+            order.DiscountAmount = Math.Min(discount, order.TotalAmount);
+            order.TotalAmount -= order.DiscountAmount;
             order.UpdatedAt = DateTime.UtcNow;
 
             // Nothing left on this order: drop it from the bill
@@ -601,7 +1039,7 @@ public class OrderService : IOrderService
                 order.Status = OrderStatus.Cancelled;
         }
 
-        var newTotal = orders.Where(o => o.Status == OrderStatus.Completed).Sum(o => o.TotalAmount);
+        var newTotal = orders.Where(o => o.Status != OrderStatus.Cancelled).Sum(o => o.TotalAmount);
 
         // Udhaar on this bill: shrink what's owed; if they'd already paid more than the new total, it's a refund
         decimal refund;
@@ -624,6 +1062,13 @@ public class OrderService : IOrderService
             // Paid in full at billing time
             refund = Math.Max(0, previousTotal - newTotal);
         }
+        await _accounting.RecordRefundAsync(orders[0].TenantId, billNumber, refund);
+
+        // Points the bill earned shrink with it (on what was actually paid, before tax)
+        var kept = orders.Where(o => o.Status != OrderStatus.Cancelled).ToList();
+        var paidNow = due?.PaidAmount ?? newTotal;
+        var tenantForBill = await _db.Tenants.FirstAsync(t => t.TenantId == orders[0].TenantId);
+        await _loyalty.ReduceEarnedForBillAsync(tenantForBill, billNumber, kept.Count == 0 ? 0 : paidNow * PreTaxShare(kept));
 
         await _db.SaveChangesAsync();
 
@@ -686,11 +1131,8 @@ public class OrderService : IOrderService
         order.Items.Remove(item);
 
         // Recalculate totals
-        order.SubTotal = order.Items.Sum(i => i.TotalPrice);
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.TenantId == order.TenantId);
-        var taxRate = tenant != null ? (tenant.CgstPercent + tenant.SgstPercent + tenant.ServiceChargePercent) / 100m : 0.05m;
-        order.Tax = Math.Round(order.SubTotal * taxRate, 2);
-        order.TotalAmount = order.SubTotal + order.Tax;
+        ApplyTotals(order, TaxRate(tenant), subtractDiscount: false);
 
         // If no items left, cancel the entire order
         if (!order.Items.Any())
@@ -704,8 +1146,7 @@ public class OrderService : IOrderService
 
         var response = MapOrder(order, order.Table?.TableNumber ?? "");
 
-        // Notify via SignalR
-        await _hub.Clients.Group(order.TenantId).SendAsync("OrderStatusUpdated", response);
+        await BroadcastOrderUpdatedAsync(response, order.TenantId);
 
         return response;
     }
@@ -719,7 +1160,7 @@ public class OrderService : IOrderService
         var billsQuery = _db.Orders
             .Include(o => o.Items)
             .Include(o => o.Table)
-            .Where(o => o.Status == OrderStatus.Completed
+            .Where(o => o.Status != OrderStatus.Cancelled
                      && o.BillNumber != null
                      && o.CompletedAt.HasValue
                      && o.CompletedAt.Value >= start
@@ -733,6 +1174,8 @@ public class OrderService : IOrderService
                 BillNumber = g.Key!,
                 CompletedAt = g.Max(o => o.CompletedAt!.Value),
                 SubTotal = g.Sum(o => o.SubTotal),
+                PackagingCharge = g.Sum(o => o.PackagingCharge),
+                LoyaltyDiscount = g.Sum(o => o.LoyaltyDiscount),
                 Tax = g.Sum(o => o.Tax),
                 DiscountAmount = g.Sum(o => o.DiscountAmount),
                 TotalAmount = g.Sum(o => o.TotalAmount),
@@ -759,7 +1202,7 @@ public class OrderService : IOrderService
         var orders = (await _db.Orders
             .Include(o => o.Items)
             .Include(o => o.Table)
-            .Where(o => o.Status == OrderStatus.Completed
+            .Where(o => o.Status != OrderStatus.Cancelled
                      && o.BillNumber != null
                      && o.CompletedAt.HasValue
                      && o.CompletedAt.Value >= start
@@ -777,6 +1220,11 @@ public class OrderService : IOrderService
             .GroupBy(d => d.BillNumber!)
             .ToDictionary(g => g.Key, g => g.First());
 
+        var pointsForBills = (await _db.LoyaltyTransactions.Where(t => t.BillNumber != null).ToListAsync())
+            .Where(t => billNumberSet.Contains(t.BillNumber!))
+            .GroupBy(t => t.BillNumber!)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         var adjustmentsForBills = (await _db.BillAdjustments.ToListAsync())
             .Where(a => billNumberSet.Contains(a.BillNumber))
             .GroupBy(a => a.BillNumber)
@@ -790,11 +1238,15 @@ public class OrderService : IOrderService
             return new BillResponse
             {
                 BillNumber = b.BillNumber,
-                TableNumber = table?.TableNumber ?? "",
+                TableNumber = table?.TableNumber ?? (billOrders.Count > 0 ? BillLabel(billOrders[0]) : ""),
                 TableLabel = table?.Label,
                 OrderCount = b.OrderCount,
                 TotalItems = billOrders.Sum(o => o.Items.Count),
                 SubTotal = b.SubTotal,
+                PackagingCharge = b.PackagingCharge,
+                LoyaltyDiscount = b.LoyaltyDiscount,
+                PointsEarned = pointsForBills.GetValueOrDefault(b.BillNumber)?.Where(p => p.Points > 0).Sum(p => p.Points) ?? 0,
+                PointsRedeemed = -(pointsForBills.GetValueOrDefault(b.BillNumber)?.Where(p => p.Type == LoyaltyTransactionType.Redeem).Sum(p => p.Points) ?? 0),
                 Tax = b.Tax,
                 DiscountAmount = b.DiscountAmount,
                 TotalAmount = b.TotalAmount,

@@ -86,6 +86,77 @@ public class Tenant
     public int ReservationGraceMinutes { get; set; } = 30;
 
 
+    /// <summary>Print a KOT automatically at the counter Print Station for every new order.</summary>
+    public bool AutoPrintKot { get; set; } = false;
+
+    /// <summary>When KOTs auto-print: OnOrder (as soon as it is placed) or OnAccept (when the kitchen accepts it).</summary>
+    [MaxLength(20)]
+    public string KotPrintTrigger { get; set; } = "OnOrder";
+
+    /// <summary>Copies of each KOT (e.g. 2: kitchen + counter).</summary>
+    public int KotCopies { get; set; } = 1;
+
+    /// <summary>Customers can order takeaway by scanning the counter QR.</summary>
+    public bool TakeawayEnabled { get; set; } = false;
+
+    /// <summary>Flat packing fee added once to every takeaway order (on top of per-dish packing charges).</summary>
+    public decimal TakeawayPackingFee { get; set; } = 0m;
+
+    /// <summary>Table/takeaway QRs only take orders during opening hours (the website's operating hours). The menu can still be browsed.</summary>
+    public bool QrOrderingHoursEnabled { get; set; } = false;
+
+    /// <summary>Stop taking QR orders this many minutes before closing.</summary>
+    public int LastOrderMinutes { get; set; } = 0;
+
+    /// <summary>Restaurant location for the QR ordering distance check.</summary>
+    public double? Latitude { get; set; }
+
+    /// <summary>Restaurant location for the QR ordering distance check.</summary>
+    public double? Longitude { get; set; }
+
+    /// <summary>QR orders are only accepted from phones within this distance of the restaurant. 0 = off.</summary>
+    public int GeofenceRadiusMeters { get; set; } = 0;
+
+    /// <summary>Restaurant's GSTIN, printed on tax invoices and used in accounting exports.</summary>
+    [MaxLength(15)]
+    public string? Gstin { get; set; }
+
+    /// <summary>Accounting setup as JSON: payment accounts (cash, UPI/bank, card) and Tally ledger names.</summary>
+    public string? AccountingJson { get; set; }
+
+    /// <summary>Staff opened QR ordering outside hours ("open now") until this time (UTC).</summary>
+    public DateTime? OrderingOpenUntil { get; set; }
+
+    /// <summary>Hotel features: rooms, check-in/out, room service and room bills.</summary>
+    public bool HotelModeEnabled { get; set; } = false;
+
+    /// <summary>Customers earn loyalty points on paid bills (by mobile number) and redeem them at the counter.</summary>
+    public bool LoyaltyEnabled { get; set; } = false;
+
+    /// <summary>Points earned per ₹100 paid (before tax).</summary>
+    public decimal LoyaltyPointsPer100 { get; set; } = 5m;
+
+    /// <summary>Rupee value of one point when redeemed.</summary>
+    public decimal LoyaltyPointValue { get; set; } = 1m;
+
+    /// <summary>Points a customer needs before they can redeem.</summary>
+    public int LoyaltyMinRedeemPoints { get; set; } = 100;
+
+    /// <summary>Most of a bill (before tax, %) that points can pay.</summary>
+    public decimal LoyaltyMaxRedeemPercent { get; set; } = 20m;
+
+    /// <summary>Points expire after this many months without a visit. 0 = never.</summary>
+    public int LoyaltyExpiryMonths { get; set; } = 12;
+
+    /// <summary>Bonus points on a customer's first bill. 0 = off.</summary>
+    public int LoyaltyWelcomeBonus { get; set; } = 0;
+
+    /// <summary>Bonus points on a bill during the customer's birthday week. 0 = off.</summary>
+    public int LoyaltyBirthdayBonus { get; set; } = 0;
+
+    /// <summary>Most points one mobile number can earn per day (stops misuse). 0 = no limit.</summary>
+    public int LoyaltyDailyEarnCap { get; set; } = 0;
+
     [MaxLength(100)]
     public string? Subdomain { get; set; }
 

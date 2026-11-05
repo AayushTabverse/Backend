@@ -11,6 +11,9 @@ public class MenuCategory : BaseEntity
     [MaxLength(500)]
     public string? Description { get; set; }
 
+    /// <summary>Name/description in other languages: {"hi": {"name": "…", "description": "…"}, "gu": {…}}.</summary>
+    public string? TranslationsJson { get; set; }
+
     [MaxLength(500)]
     public string? ImageUrl { get; set; }
 

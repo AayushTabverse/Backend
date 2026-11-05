@@ -5,16 +5,23 @@ using menu_backend.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using menu_backend.Helpers;
 using menu_backend.DTOs.Analytics;
+using menu_backend.DTOs.Notification;
+using menu_backend.Hubs;
+using Microsoft.AspNetCore.SignalR;
 
 namespace menu_backend.Services;
 
 public class InventoryService : IInventoryService
 {
     private readonly AppDbContext _db;
+    private readonly INotificationService _notifications;
+    private readonly IHubContext<OrderHub> _hub;
 
-    public InventoryService(AppDbContext db)
+    public InventoryService(AppDbContext db, INotificationService notifications, IHubContext<OrderHub> hub)
     {
         _db = db;
+        _notifications = notifications;
+        _hub = hub;
     }
 
     public async Task<List<InventoryItemResponse>> GetItemsAsync(string? category = null, bool? lowStockOnly = null)
@@ -78,6 +85,7 @@ public class InventoryService : IInventoryService
         }
 
         await _db.SaveChangesAsync();
+        await AfterStockChangedAsync(new[] { item });
         return MapItem(item);
     }
 
@@ -99,6 +107,7 @@ public class InventoryService : IInventoryService
 
         item.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await AfterStockChangedAsync(new[] { item });
 
         return MapItem(item);
     }
@@ -111,6 +120,7 @@ public class InventoryService : IInventoryService
         item.IsDeleted = true;
         item.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await AfterStockChangedAsync(new[] { item });
     }
 
     public async Task<InventoryItemResponse> AdjustQuantityAsync(Guid id, AdjustQuantityRequest request, string? userName)
@@ -152,6 +162,7 @@ public class InventoryService : IInventoryService
         });
 
         await _db.SaveChangesAsync();
+        await AfterStockChangedAsync(new[] { item });
         return MapItem(item);
     }
 
@@ -283,10 +294,12 @@ public class InventoryService : IInventoryService
         }
 
         // Apply deductions and create logs
+        var changed = new List<InventoryItem>();
         foreach (var (inventoryItemId, totalDeduction) in deductions)
         {
             var invItem = await _db.InventoryItems.FindAsync(inventoryItemId);
             if (invItem == null) continue;
+            changed.Add(invItem);
 
             invItem.CurrentQuantity = Math.Max(0, invItem.CurrentQuantity - totalDeduction);
             invItem.UpdatedAt = DateTime.UtcNow;
@@ -303,6 +316,7 @@ public class InventoryService : IInventoryService
         }
 
         await _db.SaveChangesAsync();
+        await AfterStockChangedAsync(changed);
     }
 
     public async Task RestoreForItemsAsync(IEnumerable<(Guid MenuItemId, int Quantity)> items, string note, string? changedBy = null)
@@ -316,10 +330,12 @@ public class InventoryService : IInventoryService
         }
         if (restore.Count == 0) return;
 
+        var changed = new List<InventoryItem>();
         foreach (var (inventoryItemId, amount) in restore)
         {
             var invItem = await _db.InventoryItems.FindAsync(inventoryItemId);
             if (invItem == null) continue;
+            changed.Add(invItem);
 
             invItem.CurrentQuantity += amount;
             invItem.UpdatedAt = DateTime.UtcNow;
@@ -337,6 +353,59 @@ public class InventoryService : IInventoryService
         }
 
         await _db.SaveChangesAsync();
+        await AfterStockChangedAsync(changed);
+    }
+
+    /// <summary>
+    /// Raises, escalates or clears each item's stock alert (one per item, kept up to date), and
+    /// tells open inventory screens to refresh. Thresholds match <see cref="GetSummaryAsync"/>.
+    /// </summary>
+    private async Task AfterStockChangedAsync(IReadOnlyCollection<InventoryItem> items)
+    {
+        if (items.Count == 0) return;
+
+        foreach (var item in items)
+        {
+            var key = $"stock:{item.Id}";
+            var unit = item.Unit.ToString().ToLowerInvariant();
+            var supplier = string.IsNullOrWhiteSpace(item.Supplier) ? "" :
+                $" Supplier: {item.Supplier}{(string.IsNullOrWhiteSpace(item.SupplierContact) ? "" : $" ({item.SupplierContact})")}.";
+
+            if (item.IsDeleted || !item.IsActive)
+            {
+                await _notifications.ResolveAsync(item.TenantId, key, "Item removed");
+            }
+            else if (item.CurrentQuantity <= 0)
+            {
+                await _notifications.RaiseAsync(item.TenantId, new NotificationDraft
+                {
+                    Type = "OutOfStock",
+                    Severity = NotificationSeverity.Critical,
+                    Title = $"Out of stock: {item.Name}",
+                    Message = $"{item.Name} has run out.{supplier}",
+                    Link = "/admin/inventory",
+                    DedupKey = key
+                });
+            }
+            else if (item.MinimumQuantity > 0 && item.CurrentQuantity <= item.MinimumQuantity)
+            {
+                await _notifications.RaiseAsync(item.TenantId, new NotificationDraft
+                {
+                    Type = "LowStock",
+                    Severity = NotificationSeverity.Warning,
+                    Title = $"Low stock: {item.Name}",
+                    Message = $"{item.CurrentQuantity:0.##} {unit} left (minimum {item.MinimumQuantity:0.##} {unit}).{supplier}",
+                    Link = "/admin/inventory",
+                    DedupKey = key
+                });
+            }
+            else
+            {
+                await _notifications.ResolveAsync(item.TenantId, key, "Restocked");
+            }
+        }
+
+        await _hub.Clients.Group(items.First().TenantId).SendAsync("InventoryChanged");
     }
 
     // ═══════════════════════════════════════════════════

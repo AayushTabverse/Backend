@@ -1,4 +1,5 @@
 using menu_backend.Data;
+using menu_backend.DTOs.Notification;
 using menu_backend.DTOs.Reservation;
 using menu_backend.Helpers;
 using menu_backend.Hubs;
@@ -20,13 +21,16 @@ public class ReservationService : IReservationService
     private readonly ITenantProvider _tenantProvider;
     private readonly IHubContext<OrderHub> _hub;
     private readonly IWaitlistService _waitlistService;
+    private readonly INotificationService _notifications;
 
-    public ReservationService(AppDbContext db, ITenantProvider tenantProvider, IHubContext<OrderHub> hub, IWaitlistService waitlistService)
+    public ReservationService(AppDbContext db, ITenantProvider tenantProvider, IHubContext<OrderHub> hub, IWaitlistService waitlistService,
+        INotificationService notifications)
     {
         _db = db;
         _tenantProvider = tenantProvider;
         _hub = hub;
         _waitlistService = waitlistService;
+        _notifications = notifications;
     }
 
     public async Task<List<ReservationResponse>> GetReservationsAsync(DateTime from, DateTime to)
@@ -273,6 +277,15 @@ public class ReservationService : IReservationService
             reservation.PartySize,
             reservation.ReservedFor
         });
+        await _notifications.RaiseAsync(tenantId, new NotificationDraft
+        {
+            Type = "ReservationRequest",
+            Severity = NotificationSeverity.Info,
+            Title = $"Booking request: {reservation.CustomerName}, {reservation.PartySize} guests",
+            Message = $"For {BusinessClock.ToLocal(reservation.ReservedFor):ddd d MMM, h:mm tt}. Accept or decline it on the Reservations page.",
+            Link = "/admin/reservations",
+            DedupKey = $"reservation:{reservation.Id}"
+        });
 
         return BuildPublicStatus(reservation, tenant);
     }
@@ -435,8 +448,12 @@ public class ReservationService : IReservationService
     /// <summary>Staff screens refresh on "ReservationsUpdated"; the customer's booking page follows its own group.</summary>
     private async Task BroadcastAsync(Reservation r)
     {
+        // An answered booking request no longer needs attention
+        if (r.Status != ReservationStatus.Pending)
+            await _notifications.ResolveAsync(r.TenantId, $"reservation:{r.Id}", r.Status.ToString());
+
         await _hub.Clients.Group(r.TenantId).SendAsync("ReservationsUpdated");
-        await _hub.Clients.Group(r.TenantId).SendAsync("TablesChanged");
+        await _hub.BroadcastTablesChangedAsync(r.TenantId);
         await _hub.Clients.Group($"reservation-{r.Id}").SendAsync("ReservationUpdated", r.Id.ToString());
     }
 

@@ -2,10 +2,23 @@ using System.ComponentModel.DataAnnotations;
 
 namespace menu_backend.DTOs.Menu;
 
+/// <summary>A dish or category name/description in one language.</summary>
+public class MenuText
+{
+    [MaxLength(200)]
+    public string? Name { get; set; }
+
+    [MaxLength(1000)]
+    public string? Description { get; set; }
+}
+
 // ── Category DTOs ──
 
 public class CreateCategoryRequest
 {
+    /// <summary>Other languages: { "hi": { name, description }, "gu": { … } }.</summary>
+    public Dictionary<string, MenuText>? Translations { get; set; }
+
     [Required]
     [MaxLength(150)]
     public string Name { get; set; } = string.Empty;
@@ -21,6 +34,9 @@ public class CreateCategoryRequest
 
 public class UpdateCategoryRequest
 {
+    /// <summary>Other languages: { "hi": { name, description }, "gu": { … } }.</summary>
+    public Dictionary<string, MenuText>? Translations { get; set; }
+
     [Required]
     [MaxLength(150)]
     public string Name { get; set; } = string.Empty;
@@ -38,6 +54,9 @@ public class UpdateCategoryRequest
 
 public class CategoryResponse
 {
+    /// <summary>Other languages: { "hi": { name, description }, "gu": { … } }.</summary>
+    public Dictionary<string, MenuText>? Translations { get; set; }
+
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
@@ -51,6 +70,9 @@ public class CategoryResponse
 
 public class CreateMenuItemRequest
 {
+    /// <summary>Other languages: { "hi": { name, description }, "gu": { … } }.</summary>
+    public Dictionary<string, MenuText>? Translations { get; set; }
+
     [Required]
     [MaxLength(200)]
     public string Name { get; set; } = string.Empty;
@@ -60,6 +82,10 @@ public class CreateMenuItemRequest
 
     [Required]
     public decimal Price { get; set; }
+
+    /// <summary>Packing charge per unit when ordered as parcel/takeaway.</summary>
+    [Range(0, 10000)]
+    public decimal PackagingCharge { get; set; }
 
     [MaxLength(500)]
     public string? ImageUrl { get; set; }
@@ -83,6 +109,9 @@ public class CreateMenuItemRequest
 
 public class UpdateMenuItemRequest
 {
+    /// <summary>Other languages: { "hi": { name, description }, "gu": { … } }.</summary>
+    public Dictionary<string, MenuText>? Translations { get; set; }
+
     [Required]
     [MaxLength(200)]
     public string Name { get; set; } = string.Empty;
@@ -92,6 +121,10 @@ public class UpdateMenuItemRequest
 
     [Required]
     public decimal Price { get; set; }
+
+    /// <summary>Packing charge per unit when ordered as parcel/takeaway.</summary>
+    [Range(0, 10000)]
+    public decimal PackagingCharge { get; set; }
 
     [MaxLength(500)]
     public string? ImageUrl { get; set; }
@@ -112,10 +145,17 @@ public class UpdateMenuItemRequest
 
 public class MenuItemResponse
 {
+    /// <summary>The restaurant's own (English) name, kept when Name is shown in another language.</summary>
+    public string? BaseName { get; set; }
+
+    /// <summary>Other languages: { "hi": { name, description }, "gu": { … } }.</summary>
+    public Dictionary<string, MenuText>? Translations { get; set; }
+
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public decimal Price { get; set; }
+    public decimal PackagingCharge { get; set; }
     public string? ImageUrl { get; set; }
     public bool IsAvailable { get; set; }
     public bool IsVeg { get; set; }
@@ -164,6 +204,19 @@ public class FullMenuResponse
     /// <summary>Set when that table is merged into another: orders are only taken on the main table.</summary>
     public string? MergedIntoTableNumber { get; set; }
 
+    /// <summary>Customers may order takeaway from the counter QR.</summary>
+    public bool TakeawayEnabled { get; set; }
+    /// <summary>Flat packing fee added to each takeaway order.</summary>
+    public decimal TakeawayPackingFee { get; set; }
+
+    /// <summary>False outside opening hours (when the restaurant locks QR ordering): browse only.</summary>
+    public bool OrderingOpen { get; set; } = true;
+    public string? ClosedMessage { get; set; }
+    /// <summary>Next opening, restaurant-local ISO time.</summary>
+    public string? OpensAt { get; set; }
+    /// <summary>Orders need the phone's location (only accepted from inside the restaurant).</summary>
+    public bool LocationRequired { get; set; }
+
     public List<CategoryResponse> Categories { get; set; } = new();
 }
 
@@ -193,4 +246,10 @@ public class MenuItemIngredientResponse
     public string Unit { get; set; } = string.Empty;
     public decimal QuantityUsed { get; set; }
     public decimal CurrentStock { get; set; }
+}
+
+public class PopularItemResponse
+{
+    public Guid MenuItemId { get; set; }
+    public int Quantity { get; set; }
 }

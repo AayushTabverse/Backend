@@ -18,6 +18,12 @@ public class OrderItem : BaseEntity
 
     public decimal TotalPrice { get; set; }
 
+    /// <summary>Pack this item to take away (always true on takeaway orders).</summary>
+    public bool IsParcel { get; set; }
+
+    /// <summary>Packing charge per unit at the time of ordering (0 unless parcel).</summary>
+    public decimal PackagingCharge { get; set; }
+
     [MaxLength(500)]
     public string? Modifiers { get; set; }
 
